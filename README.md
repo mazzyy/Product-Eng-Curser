@@ -1,157 +1,184 @@
-# Production Engineer Copilot - station + people prototype
+# Production Engineer Copilot - prototype
 
 **Goal:** a "Cursor for production engineers" on a Giga-style vehicle line. Instead of a
-dashboard full of numbers, the engineer gets the few rows that need a look, with a sentence
-explaining why. The prototype is small on purpose: **2 stations, 1 table each, 2 simple models
-(machine and people), 3 charts.**
+dashboard full of numbers, the engineer gets the few things that need a look, **why** they
+happened, and a sentence explaining it.
 
-## The database: one table per station, same pattern everywhere
+This prototype uses 2 stations, 1 table per station, and 3 small models:
 
-`data/factory.db` (SQLite). Each station has one table (`st012`, `st013`) with the **same
-columns**. A row is one event at that station: a production cycle, a fault, or a maintenance
-stop. It holds both the machine side and the human side of the work, plus what both models found.
+- **Signal checker:** what looks wrong in the data.
+- **People model:** what looks wrong in the human work.
+- **Cause finder:** why it happened - machine, people, method or station.
 
-| Column group | Columns |
-|---|---|
-| When / what | `event_id`, `ts`, `shift`, `event_type` (CYCLE / FAULT / MAINTENANCE), `vin`, `model`, `cycle_time_s` |
-| **Human cycle** | `operator_id`, `operator_skill` (1-4), `operator_time_s` (hands-on time), `wait_time_s`, `retries`, `andon_pulled`, `andon_response_s` |
-| Process | `primary_name/value/unit/lsl/usl`, `secondary_name/value/unit/lsl/usl`, `temperature_c` |
-| Outcome | `result` (OK / NOK), `fault_code`, `downtime_s`, `comment` |
-| Station model | `anomaly_score`, `anomaly_flag`, `anomaly_type`, `anomaly_reason` |
-| People model | `human_score`, `human_flag`, `human_type`, `human_reason` |
+See `PROGRESS.md` for what was built when, and the full roadmap (models 0-9).
 
-The only other table is **`operator_shifts`**: one summary row per operator per shift (pace,
-slowdown, retry rate, NOK rate, method offset, counts, peer score, finding). The people model
-rebuilds it each run.
-
-| Station | What it does | primary | secondary | Hands-on standard |
-|---|---|---|---|---|
-| **ST012** | Front subframe bolt-down (nutrunner) | torque, Nm (110-130) | angle, deg (35-75) | 30 s of a 47 s cycle |
-| **ST013** | Coolant fill & leak test (after ST012) | leak_rate, sccm (0-2) | fill_volume, L (9.2-9.8) | 18 s of a 44 s cycle |
-
-The simulated crews are A, B and C, each with 4 operators on 8-hour shifts. They rotate every
-2 hours, and whoever ran ST013 moves to ST012. Operator IDs are pseudonymous (`OP-B2`). To add
-ST014, you add one entry to `STATIONS` in `station_db.py`.
-
-## Model 1 - station (`train_model.py`)
-
-It finds rows where the machine or process data doesn't tell one consistent story.
-
-| anomaly_type | Examples | Found by |
-|---|---|---|
-| `label_conflict` | OK but torque out of spec; NOK with everything in spec and no code | rules |
-| `traceability` | no VIN, same VIN twice, VIN at ST013 never seen at ST012 | rules |
-| `sensor` | reading stuck on one value, measurement missing | rules |
-| `unlogged_event` | fault with no code; slow or fast cycle nothing in the log explains | rules + model |
-| `pattern` | in spec, but angle doesn't fit torque; slow drift | model |
-
-- **How it works:** an Isolation Forest per station on 4 features, plus a 6-sigma guard. The
-  features are primary level, distance from the normal primary/secondary line, cycle time
-  after subtracting logged retries, and a rolling baseline.
-- **Left alone on purpose:** correctly rejected parts, and slow cycles explained by an andon call.
-
-## Model 2 - people (`train_people_model.py`)
-
-It uses the same idea for the human side. Every finding is worded as something to check or
-help with, not a score to rank people.
-
-**Every cycle** (`human_*` columns):
-
-| human_type | Meaning | Found by |
-|---|---|---|
-| `rushed` | far faster than *this operator's* normal, so a step may have been skipped | Isolation Forest + guard |
-| `struggle` | far slower than their normal and no andon pulled, so they may have needed help | Isolation Forest + guard |
-| `retries` | 4 or more re-hits in one cycle: part fit, tool or technique | Isolation Forest + guard |
-| `support` | andon pulled but the team lead took more than 3 minutes. A support gap, not the operator | rule |
-| `login` | same operator logged in at two stations at once (stale login at rotation) | rule |
-| `working_time` | working outside their crew's shift, with rest time (flags under 11 h) | rule |
-
-The cycle features are hands-on time against the operator's **own** baseline at that station,
-hands-on time against the station standard, and retries. Comparing people with their own
-normal avoids penalising someone who is always a bit slower.
-
-**Every operator-shift** (`operator_shifts` table): each shift is compared with all others
-(robust z-score of 4 or more).
-
-- `fatigue`: slows down over the shift, for example +32% by the end when the typical drift is +3%.
-- `method`: the machine signature of their work is shifted. At ST012 the angle for a given
-  torque sits 1.2 sigma lower on every cycle. Every part is in spec, so no single cycle looks
-  wrong, but the whole shift does.
-- `retries`, `quality` (NOK rate), `pace`: well above or below peers.
-- The cycle-level counts are included too: `rushing`, `support`, `login`, `working_time`.
-
-## Results on the generated week (about 11,500 cycles per station, 12 operators, 85 operator-shifts)
-
-| Model | Precision | Recall |
-|---|---|---|
-| Station ST012 / ST013 | 86% / 90% | 96% / 87% |
-| People, every cycle | 93% | 99% |
-| People, every operator-shift | 93% | 96% |
-
-- **Station model:** every rule type is found 100%. Drift is found about 70-95%, because its
-  first cycles look normal by design.
-- **People model:** both fatigue shifts and all 7 method-deviation shifts are found. The
-  high-retry operator is found in 6 of 7 shifts.
-- **What "precision" means here:** most of the other flags are real behaviour that wasn't
-  planted, such as slow cycles on the fatigued shifts.
-
-## Run it (MacBook, under 10 seconds in total)
+## Run it (MacBook, about 30 seconds in total)
 
 ```bash
 cd "Product Eng Curser "
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-python generate_data.py        # rebuild data/factory.db (7 days, 2 stations, 12 operators)
-python train_model.py          # station model  -> anomaly_* columns
-python train_people_model.py   # people model   -> human_* columns + operator_shifts table
-python plot_station.py         # charts/st012.png, charts/st013.png
-python plot_people.py          # charts/people.png
+python generate_data.py        # simulate the demo week -> data/factory.db (+ answer keys)
+python train_model.py          # signal checker   -> anomaly_* columns
+python train_people_model.py   # people model     -> human_* columns + operator_shifts table
+python train_cause_model.py    # cause finder: learn from 40 simulated weeks (about 15 s)
+python find_causes.py          # cause finder     -> incidents table + incident_id column
+python plot_station.py && python plot_people.py && python plot_causes.py   # charts/
 ```
+
+## The database
+
+`data/factory.db` (SQLite) has:
+
+- **One table per station** (`st012`, `st013`), with the same columns everywhere. A row is
+  one event (cycle, fault or maintenance). It holds the machine side and the human side of the
+  work, plus what every model found about it.
+- **Two summary tables** that the models rebuild: `operator_shifts` and `incidents`.
+
+| Column group | Columns |
+|---|---|
+| When / what | `event_id`, `ts`, `shift`, `event_type`, `vin`, `model`, `work_instruction`, `part_batch`, `cycle_time_s`, `machine_time_s` |
+| Human cycle | `operator_id`, `operator_skill`, `operator_time_s`, `wait_time_s`, `retries`, `andon_pulled`, `andon_response_s` |
+| Process | `primary_name/value/unit/lsl/usl`, `secondary_name/value/unit/lsl/usl`, `temperature_c` |
+| Outcome | `result`, `fault_code`, `downtime_s`, `comment` |
+| Signal checker | `anomaly_score`, `anomaly_flag`, `anomaly_type`, `anomaly_reason` |
+| People model | `human_score`, `human_flag`, `human_type`, `human_reason` |
+| Cause finder | `incident_id` -> links the cycle to its row in `incidents` |
+
+| Station | What it does | primary | secondary |
+|---|---|---|---|
+| ST012 | Front subframe bolt-down (nutrunner) | torque, Nm | angle, deg |
+| ST013 | Coolant fill & leak test (after ST012) | leak rate, sccm | fill volume, L |
+
+The simulated crews are A, B and C, each with 4 operators on 8-hour shifts. They rotate every
+2 hours from ST013 to ST012. Work-instruction versions and part batches change during the week,
+and machines get repaired. All data is synthetic.
+
+## Model 1 - signal checker (`train_model.py`)
+
+It finds data that contradicts itself or doesn't fit the normal pattern:
+
+- **label_conflict:** OK but out of spec, or NOK with no reason.
+- **traceability:** missing or double VIN, or a car never seen upstream.
+- **sensor:** a stuck value or a dropout.
+- **unlogged_event:** a slow or fast cycle nothing explains.
+- **pattern:** in spec but off the pattern, or drifting.
+
+How: rules plus an Isolation Forest per station.
+
+## People model (`train_people_model.py`)
+
+**Every cycle:**
+
+- rushed (a possible skipped step)
+- struggle (slow, no andon pulled)
+- retry bursts
+- andon calls with no response
+- stale logins
+- work outside the operator's own shift
+
+**Every operator-shift, compared with peers:**
+
+- fatigue
+- technique
+- retries
+- quality
+- pace
+
+Pace is measured against others on the same station and shift, so a station-wide change
+(a new instruction, a slow machine) doesn't get blamed on people. Findings are worded to support
+people, not rank them.
+
+## Model 2 - cause finder (`cause_finder.py`, `train_cause_model.py`, `find_causes.py`)
+
+**Question:** the same symptom (more re-hits, slower cycles, a shifted signal, VIN errors) can
+come from four causes. Which one is it, and who or what exactly?
+
+| Cause | What it covers | Evidence that gives it away |
+|---|---|---|
+| machine | tool, sensor, scanner, fixture | every operator on that station; builds up over time; stops after a repair |
+| people | one person | follows the operator, including to the other station after rotation |
+| method | the work instruction | starts when a new version goes live; every operator and crew |
+| station | inputs and surroundings: part batch, supply, IT/MES | starts and stops with a batch; waiting only; both stations at once |
+
+**How it works**
+
+1. **Blocks:** the week is cut into 2-hour rotation blocks. In one block, one operator works one
+   station under one instruction version, so each block is a small natural experiment.
+2. **Symptoms:** 10 KPIs per block (re-hits, NOK, hands-on time, machine time, waiting,
+   signal level, signal offset, no VIN, double VIN, missing measurement) are compared with the
+   station's healthy baseline. That baseline is estimated from the lower part of the
+   distribution, so a problem that lasts days doesn't become "normal".
+3. **Incidents:** symptomatic blocks of the same symptom family in the same shift form one incident.
+4. **Evidence graph:** each incident is linked to its candidate culprits - the operator, the
+   machine, the instruction version, the batch, and supply/IT. The rest of the week decides how
+   strong each link is (35 evidence features).
+5. **Learned classifier:** a random forest trained on 40 simulated weeks where the true cause is
+   known. The simulator plants the same symptoms with different causes on purpose.
+6. **Output:** cause, confidence (below 50% it says "unclear"), culprit, plain-language
+   evidence, the graph, and cases (the same cause and culprit across shifts).
+
+It also re-checks the people model. For each operator-shift flagged for fatigue, technique,
+retries, quality or pace, `operator_shifts.cause_check` says whether the cause finder agrees it
+is that person, or whether a machine, method or station cause was active instead.
+
+**Results**
+
+- **Weeks it never saw** (8 simulated weeks): 95% of incidents get the right cause; 94% of the
+  planted root causes are detected.
+- **Demo week:** all 11 planted root causes found, each with the right cause and culprit.
+
+| Case | Cause | Culprit | Evidence |
+|---|---|---|---|
+| Re-hits at ST012 Mon afternoon | station | bolt batch BL-4471 | starts and stops with the batch, all operators |
+| Re-hits every night, both stations | people | OP-C1 | 86% of their blocks vs 3% for others; follows them to ST013 |
+| Hands-on time +23% at ST012 Tue-Wed | method | WI-012 v4 | started 0 h after v4 went live; every crew |
+| Angle off pattern every afternoon | people | OP-B2 | 100% of their blocks vs 5% for others |
+| Torque drifting Thu morning | machine | Nutrunner NR-012 | every operator; stopped after "Nutrunner recalibrated" |
+| No VIN on both stations Wed 10:00 | station | MES / line network | both stations at the same time |
+| Double VIN scans from Sat | method | WI-013 v8 | started with v8, every crew |
+
+**Honest caveat:** the simulator makes each cause leave a clean fingerprint. Real data will be
+messier, and the classifier should be re-trained on real incidents labelled by engineers.
 
 ## Handy queries
 
 ```sql
--- what needs a look at ST012 (machine side), worst first
-SELECT ts, vin, anomaly_type, anomaly_reason FROM st012
-WHERE anomaly_flag = 1 ORDER BY anomaly_score DESC LIMIT 20;
+-- all incidents of the week with cause and culprit
+SELECT incident_id, case_id, shift_date, shift, symptom, cause, confidence, culprit, evidence
+FROM incidents ORDER BY start_ts;
 
--- operator-shifts worth a supportive conversation
-SELECT operator_id, shift_date, shift, finding_type, finding
-FROM operator_shifts WHERE flag = 1 ORDER BY shift_date;
+-- every cycle behind one incident
+SELECT * FROM st012 WHERE incident_id = 4;
 
--- one vehicle, both stations, machine + human view (5 re-hits at ST012, then rushed at ST013)
-SELECT 'ST012' st, ts, operator_id, operator_time_s, retries, result, anomaly_reason, human_reason
-FROM st012 WHERE vin = 'XP7YSIM0106442'
-UNION ALL
-SELECT 'ST013', ts, operator_id, operator_time_s, retries, result, anomaly_reason, human_reason
-FROM st013 WHERE vin = 'XP7YSIM0106442';
+-- people findings the cause finder does NOT attribute to the person
+SELECT operator_id, shift_date, finding_type, cause_check FROM operator_shifts
+WHERE cause_check LIKE 'careful%';
 
--- how fast do team leads answer the andon, per shift
-SELECT shift, COUNT(*) calls, ROUND(AVG(andon_response_s)) avg_s, SUM(andon_response_s > 180) late
-FROM st012 WHERE andon_pulled = 1 GROUP BY shift;
+-- signal-checker flags that the cause finder could explain
+SELECT s.ts, s.anomaly_reason, i.cause, i.culprit
+FROM st013 s JOIN incidents i USING (incident_id) WHERE s.anomaly_flag = 1;
 ```
 
 ## Using people data responsibly
 
-- **Purpose:** the people model is meant to find where the line should support people
-  (coaching, tools, workload, team-lead response, logins). It is not for ranking or disciplining
-  individuals.
-- **Findings:** keep IDs pseudonymous, show findings to the team lead and operator together,
-  and treat each finding as a question, not a verdict.
-- **Legal (Germany):** a system like this touches worker-monitoring rules. Before using it with
-  real people data, involve the works council (Betriebsrat co-determination) and your data
-  protection officer (GDPR).
+- **Purpose:** the people findings are for support (coaching, tools, workload, team-lead
+  response, login process). They are not for ranking or discipline.
+- **Legal (Germany):** before using real operator data, involve the works council (Betriebsrat)
+  and the data protection officer (GDPR).
 
 ## Files
 
 | File | Purpose |
 |---|---|
-| `station_db.py` | Table pattern, `operator_shifts` table, station config |
-| `generate_data.py` | Synthetic week: machine data, crews, rotation, operator profiles, injected problems |
-| `train_model.py` | Station model (rules + Isolation Forest) |
-| `train_people_model.py` | People model (cycle rules + Isolation Forest, operator-shift peer comparison) |
-| `plot_station.py` / `plot_people.py` | Charts |
-| `data/injected_labels.csv`, `data/injected_people_labels.csv` | Ground truth for the evaluation printouts only |
-
-All data is synthetic (VINs start with `XP7YSIM`, operators are `OP-<crew><n>`).
+| `station_db.py` | Table pattern, `operator_shifts` and `incidents` tables, station config |
+| `generate_data.py` | Line simulator: demo week or random weeks; root-cause scenarios; answer keys |
+| `train_model.py` | Signal checker |
+| `train_people_model.py` | People model |
+| `cause_finder.py` | Cause finder logic: blocks, KPIs, incidents, evidence graph, explanations |
+| `train_cause_model.py` | Trains the cause finder on simulated weeks, with held-out test |
+| `find_causes.py` | Runs the cause finder on `factory.db`, writes incidents, re-checks people findings |
+| `plot_station.py`, `plot_people.py`, `plot_causes.py` | Charts in `charts/` |
+| `data/injected_*.csv` | Answer keys from the simulator, used only for the evaluation printouts |
+| `PROGRESS.md` | Step-by-step log of what was built and how |

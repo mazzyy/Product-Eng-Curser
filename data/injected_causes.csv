@@ -1,0 +1,12 @@
+scenario_id,cause,family,stations,start,end,culprit,description,operator,batch,wi,shift_date,shift,bursts
+M1,machine,pattern,st012,2026-09-17 00:00,2026-09-17 08:30,Nutrunner NR-012,Torque calibration drifting,,,,,,
+M2,machine,quality,st013,2026-09-18 06:30,2026-09-18 21:30,Fill head CF-013,Fill head seal wearing - re-tests rising,,,,,,
+P1,people,pattern,st012,2026-09-14 06:00,2026-09-21 06:00,OP-B2,OP-B2 seats the subframe bolts with a different technique,OP-B2,,,,,
+P2,people,quality,"st012,st013",2026-09-14 06:00,2026-09-21 06:00,OP-C1,OP-C1 needs many re-hits / re-tests (technique or training),OP-C1,,,,,
+P3,people,speed,"st012,st013",2026-09-17 22:00,2026-09-18 06:00,OP-C4,OP-C4 tiring through the night shift,OP-C4,,,2026-09-17,C,
+P4,people,speed,"st012,st013",2026-09-19 14:00,2026-09-19 22:00,OP-B4,OP-B4 tiring through the shift,OP-B4,,,2026-09-19,B,
+T1,method,speed,st012,2026-09-15 06:00,2026-09-16 14:00,WI-012 v4,New work instruction added a manual torque-check step,,,WI-012 v4,,,
+T2,method,data,st013,2026-09-19 14:00,2026-09-21 06:00,WI-013 v8,New work instruction asks for a second VIN scan,,,WI-013 v8,,,
+S1,station,quality,st012,2026-09-14 13:40,2026-09-14 21:10,bolt batch BL-4471,Bolt batch BL-4471 out of tolerance,,BL-4471,,,,
+S2,station,speed,st012,2026-09-16 22:00,2026-09-17 02:30,Material supply to ST012,Body supply from ST011 interrupted,,,,,,
+S3,station,data,"st012,st013",2026-09-16 10:00,2026-09-16 12:00,MES / line network,MES / line network outage - scans lost,,,,,,2026-09-16 10:15/2026-09-16 10:50;2026-09-16 11:30/2026-09-16 11:55

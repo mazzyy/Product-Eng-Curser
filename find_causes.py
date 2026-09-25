@@ -62,6 +62,7 @@ def main():
             "start_ts": S.start.min().strftime("%Y-%m-%d %H:%M:%S"),
             "end_ts": S.end.max().strftime("%Y-%m-%d %H:%M:%S"),
             "stations": ",".join(ev["stations"]), "top_station": ev["top"], "blocks": len(S),
+            "block_list": "; ".join(f"{b.station}@{b.start:%Y-%m-%d %H:%M}" for b in S.itertuples()),
             "symptom": symptom_text(inc["family"], ev), "cause": cause, "confidence": round(float(p[best]), 3),
             **{f"p_{c}": round(float(p[classes.index(c)]), 3) if c in classes else 0.0 for c in CAUSES},
             "culprit": culprit if cause != "unclear" else f"unclear (best guess: {classes[best]} - {culprit})",

@@ -209,6 +209,7 @@ CREATE TABLE incidents (
     stations      TEXT,
     top_station   TEXT,
     blocks        INTEGER,           -- 2-hour rotation blocks showing the symptom
+    block_list    TEXT,              -- those blocks as station@start; station@start; ...
     symptom       TEXT,              -- what was seen, in plain words
     cause         TEXT,              -- machine | people | method | station | unclear
     confidence    REAL,

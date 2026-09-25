@@ -43,6 +43,10 @@ def main():
     con = connect()
     inc = pd.read_sql("SELECT * FROM incidents", con, parse_dates=["start_ts", "end_ts"])
     con.close()
+    # the 2-hour blocks behind each incident, per station
+    blocks = inc.assign(b=inc.block_list.str.split("; ")).explode("b")
+    blocks["station"] = blocks.b.str.split("@").str[0]
+    blocks["block"] = pd.to_datetime(blocks.b.str.split("@").str[1])
     bundle = joblib.load(MODELS_DIR / "cause_finder.joblib")
     if inc.empty:
         raise SystemExit("no incidents - run find_causes.py first")
@@ -63,32 +67,39 @@ def main():
     ax = fig.add_subplot(gs[0, :])
     lanes = [(s, f) for s in sorted(inc.top_station.unique()) for f in FAMILY_TEXT]
     y = {l: i for i, l in enumerate(lanes)}
-    for r in inc.itertuples():
-        for s in r.stations.split(","):
-            yy = y[(s, r.family)]
-            ax.barh(yy, (r.end_ts - r.start_ts) / pd.Timedelta(days=1), left=mdates.date2num(r.start_ts),
-                    height=0.56, color=CAUSE_COLOR[r.cause], edgecolor=SURFACE, linewidth=1.5,
-                    alpha=1.0 if s == r.top_station else 0.45)
-    seen = set()
-    for r in inc.sort_values("start_ts").itertuples():             # label each case once
-        if r.case_id in seen:
+    lanes_used = set()
+    for r in blocks.itertuples():
+        lane = (r.station, r.family)
+        if lane not in y:
+            continue
+        ax.barh(y[lane], 2 / 24, left=mdates.date2num(r.block), height=0.56, color=CAUSE_COLOR[r.cause],
+                edgecolor=SURFACE, linewidth=1.5, alpha=1.0 if r.station == r.top_station else 0.45)
+        lanes_used.add(lane)
+    seen, last_x = set(), {}
+    for r in blocks.sort_values("block").itertuples():               # label each case once
+        if r.case_id in seen or r.station != r.top_station:
             continue
         seen.add(r.case_id)
-        label = r.culprit if r.cause != "unclear" else "unclear"
-        ax.text(mdates.date2num(r.start_ts), y[(r.top_station, r.family)] + 0.36, label, fontsize=7.5,
-                color=INK, va="bottom", ha="left", clip_on=False)
+        lane, x = (r.station, r.family), mdates.date2num(r.block)
+        above = x - last_x.get(lane, -9) > 0.6                       # stagger labels that would collide
+        last_x[lane] = x if above else last_x.get(lane, -9)
+        ax.text(x, y[lane] + (-0.34 if above else 0.34), r.culprit if r.cause != "unclear" else "unclear",
+                fontsize=7.5, color=INK, va="bottom" if above else "top", ha="left", clip_on=False)
     ax.set_yticks(range(len(lanes)), [f"{s.upper()}  {FAMILY_TEXT[f]}" for s, f in lanes])
     ax.set_ylim(-0.6, len(lanes) - 0.2)
     ax.invert_yaxis()
     ax.xaxis_date()
-    ax.xaxis.set_major_formatter(mdates.DateFormatter("%a %d"))
+    t0 = inc.start_ts.min().normalize() + pd.Timedelta(hours=6)
+    ax.set_xlim(mdates.date2num(t0), mdates.date2num(t0 + pd.Timedelta(days=7)))
+    ax.xaxis.set_major_locator(mdates.HourLocator(byhour=[6]))
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%a %d 06:00"))
     ax.grid(axis="x", visible=True, color=GRID)
     ax.grid(axis="y", visible=False)
     ax.tick_params(axis="y", length=0)
     for i in range(1, len(lanes)):
         if lanes[i][0] != lanes[i - 1][0]:
             ax.axhline(i - 0.5, color=MUTED, lw=0.8)
-    ax.set_title("Every incident of the week, coloured by its cause (label = the culprit; faded = echo at the other station)")
+    ax.set_title("Every incident of the week, coloured by its cause (label = the culprit; faded = same incident at the other station)")
     ax.legend(handles=[Patch(color=CAUSE_COLOR[c], label=c) for c in CAUSE_COLOR if c != "unclear" or counts.get(c, 0)],
               loc="lower right", bbox_to_anchor=(1.0, 1.0), ncol=5, frameon=False, fontsize=9, labelcolor=INK_2,
               handlelength=1.2, columnspacing=1.4)
@@ -123,6 +134,7 @@ def main():
     ax.set_yticks(range(len(imp)), [EVIDENCE_TEXT[k] for k in imp.index])
     ax.tick_params(axis="y", length=0)
     ax.set_xlim(0, imp.max() * 1.25)
+    ax.xaxis.set_major_locator(plt.MultipleLocator(0.05))
     ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v:.0%}"))
     ax.grid(axis="y", visible=False)
     ax.grid(axis="x", visible=True)
