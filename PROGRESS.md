@@ -622,3 +622,13 @@ Steps 4-9 are not committed to git yet.
 
 **Run:** `pip install -r requirements.txt && python app.py` -> http://localhost:8000
 Steps 4-10 are not committed to git yet.
+
+**Fix (same day):**
+- **Problem:** `http://localhost:8000` stayed blank on the Mac, while `http://127.0.0.1:8000` worked. On
+  macOS, "localhost" tries IPv6 first, and another program was holding port 8000 there without answering.
+- **Change to `app.py`:**
+  - it now checks the port on both IPv4 and IPv6, and moves to the next free port if needed;
+  - it prints the exact `127.0.0.1` address and opens the browser itself;
+  - it says to keep the window open; `--port` and `--no-browser` options were added.
+- **Change to the frontend:** the KPI count-up now also finishes when the tab is in the background.
+

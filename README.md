@@ -45,7 +45,7 @@ python change_manager.py demo  # change manager   -> changes, change_events (rep
 python agent.py --demo         # the copilot answers the 7 demo questions (Azure GPT-5, cached for the demo)
 python agent.py --chat         # ask your own questions, with follow-ups
 
-python app.py                  # THE APP -> http://localhost:8000
+python app.py                  # THE APP -> opens http://127.0.0.1:8000 in your browser
 python plot_station.py && python plot_people.py && python plot_causes.py && python plot_impacts.py   # charts/
 python plot_method.py && python plot_floor.py
 ```

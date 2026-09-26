@@ -3,7 +3,7 @@ Production Copilot - the app. A FastAPI backend over all nine models plus the ag
 frontend in frontend/ (plain HTML/CSS/JS, no build step, works offline).
 
     pip install -r requirements.txt
-    python app.py                      # -> http://localhost:8000
+    python app.py                      # opens http://127.0.0.1:8000 (or the next free port)
 
 Everything the UI shows comes from data/factory.db (run the pipeline first, see README).
 The copilot uses Azure GPT-5 when .env has a key, otherwise its cache / offline router.
@@ -498,7 +498,38 @@ def index():
 
 app.mount("/", StaticFiles(directory=FRONTEND), name="static")
 
+def port_taken(port: int) -> bool:
+    """True if anything answers on this port - IPv4 or IPv6 (a Mac's "localhost" tries IPv6 first)."""
+    import socket
+    for fam, host in ((socket.AF_INET, "127.0.0.1"), (socket.AF_INET6, "::1")):
+        try:
+            with socket.socket(fam, socket.SOCK_STREAM) as s:
+                s.settimeout(0.3)
+                if s.connect_ex((host, port)) == 0:
+                    return True
+        except OSError:
+            pass
+    return False
+
+
 if __name__ == "__main__":
+    import argparse
+    import threading
+    import webbrowser
+
     import uvicorn
-    print("Production Copilot -> http://localhost:8000")
-    uvicorn.run(app, host="127.0.0.1", port=8000, log_level="warning")
+    ap = argparse.ArgumentParser(description="Production Copilot app")
+    ap.add_argument("--port", type=int, default=8000)
+    ap.add_argument("--no-browser", action="store_true", help="do not open the browser")
+    args = ap.parse_args()
+    port = next((p for p in range(args.port, args.port + 20) if not port_taken(p)), None)
+    if port is None:
+        raise SystemExit(f"ports {args.port}-{args.port + 19} are all in use - try: python app.py --port 9000")
+    url = f"http://127.0.0.1:{port}"
+    print(f"\n  Production Copilot is running  ->  {url}")
+    if port != args.port:
+        print(f"  (port {args.port} is used by another program on this computer, so the app uses {port})")
+    print("  Keep this window open while you use the app. Press Ctrl+C to stop.\n")
+    if not args.no_browser:
+        threading.Timer(1.5, webbrowser.open, [url]).start()
+    uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")

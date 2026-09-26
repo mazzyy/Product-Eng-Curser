@@ -75,6 +75,7 @@ export function countUp(el, to, { dur = 900, dec = 0, suffix = "", prefix = "" }
   if (!el) return;
   if (reduced() || !Number.isFinite(+to)) { el.textContent = prefix + fmt.n(to, dec) + suffix; return; }
   const t0 = performance.now();
+  setTimeout(() => (el.textContent = prefix + fmt.n(to, dec) + suffix), dur + 120);   // background tabs pause animation frames
   const step = (t) => {
     const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3);
     el.textContent = prefix + fmt.n(to * e, dec) + suffix;
