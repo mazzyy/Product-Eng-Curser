@@ -1,15 +1,21 @@
 # TAKT - the production engineer's copilot (prototype)
 
-**TAKT** is named after *takt time*, the heartbeat of an assembly line - here one car every 50 s. It is
-a German word, which fits a Giga Berlin-style plant, and it says what the tool is for: keeping the line
-in rhythm. The mark (`frontend/img/takt-mark.svg`) is one cycle of the line - the ring - and the car
-that arrives every takt - the dot.
+![TAKT - the Today page](docs/images/01-today.png)
 
-**Goal:** a "Cursor for production engineers" on a Giga-style vehicle line. Instead of a
-dashboard full of numbers, the engineer gets the few things that need a look, **why** they
-happened, and a sentence explaining it.
+**TAKT is an AI copilot for production engineering: a decision-support layer on top of the MES.** It reads
+what the line produces - station data, handover notes, work instructions, maintenance history - and tells
+the engineer what needs a look, **why** it happened, and **who decides** what to do next.
 
-This prototype uses 2 stations, 1 table per station, 9 small models, and an agent that uses them all:
+**The name.** *Takt time* is the heartbeat of an assembly line - here one car every 50 s. It is a German
+word, which fits a Giga Berlin-style plant, and it says what the tool is for: keeping the line in rhythm.
+The mark (`frontend/img/takt-mark.svg`) is one cycle of the line - the ring - and the car that arrives
+every takt - the dot.
+
+**Goal:** a "Cursor for production engineers" on a Giga-style vehicle line. Instead of a dashboard full of
+numbers, the engineer gets the few things that need a look, why they happened, and a sentence explaining it.
+
+This prototype uses 2 stations (ST012 subframe bolt-down, ST013 coolant fill & leak test), 1 table per
+station, 9 small models, and an agent that uses them all:
 
 - **Signal checker:** what looks wrong in the data.
 - **People model:** what looks wrong in the human work.
@@ -24,12 +30,105 @@ This prototype uses 2 stations, 1 table per station, 9 small models, and an agen
 - **Agent (copilot):** ask in plain words; GPT-5 answers from the models above (as tools) and shows
   its work.
 
-See `PROGRESS.md` for what was built when, and the full roadmap (models 0-9).
+See `PROGRESS.md` for what was built when.
 
-## Run it (MacBook, about 30 seconds in total)
+## At a glance
+
+| | |
+|---|---|
+| **What kind of software** | Manufacturing operations software (the MOM layer, next to the MES) - not a CRM or an ERP. It connects what is usually spread over the MES, the quality system, the maintenance system and the change process. |
+| **For whom** | The production engineer - with the supervisor, quality and maintenance, who keep their decisions |
+| **Questions it answers** | Is a drop real? Machine, people, method or material? Stop the line - and which cars wait for a check? Is a new work instruction safe, trained and within takt? How often should each machine be checked? |
+| **Results (simulated line)** | Cause finder 95 % right on weeks it never saw · 10 of 11 planted problems confirmed live, median 13 h after they started · method checker caught 46 of 46 bad versions with 0 false alarms · GPT-5 found 37 of 37 facts in messy handover notes |
+| **Runs** | On a laptop, offline: saved GPT-5 answers and rule-based fallbacks mean no key or internet is needed for the demo |
+
+![The live line: a new week streamed car by car](docs/images/live-line.gif)
+
+*The live line: a new week is streamed car by car and every model runs as the data arrives - the models
+never see the future.*
+
+## How it works
+
+### The workflow of all models
+
+![Workflow of all models](charts/workflow.png)
+
+Five layers, left to right: **the line** produces data -> **detect** turns it into signals (unusual cars,
+operator patterns, facts from notes, rule breaks in methods) -> **understand** says why (machine, people,
+method or station) and how much it matters -> **decide & act** (containment, change management,
+maintenance) -> **the engineer** sees alerts, priorities and the copilot. The loop closes at the bottom: a
+released work instruction is what the next shift works to. Every box shows what it produced in the demo
+week; the same diagram is live and clickable on the **How it works** page.
+
+### One problem, end to end
+
+![One problem end to end: the NR-012 drift](docs/images/flow-one-problem.png)
+
+### Architecture
+
+![Architecture: from line data to the engineer's screen](docs/images/architecture.png)
+
+## Tech
+
+| Layer | Tech |
+|---|---|
+| Data | Python line simulator (planted problems + answer keys), SQLite |
+| Models | scikit-learn (Isolation Forest, Random Forest), SciPy (Weibull reliability fit), rule engines |
+| AI | Azure OpenAI GPT-5 (Responses API): floor listener with a strict JSON schema, copilot agent with 13 read-only tools; answers cached for offline use |
+| Backend | FastAPI + Uvicorn, a threaded live engine, WebSocket alerts |
+| Frontend | Plain HTML, CSS and JavaScript modules - no framework, no build step; SVG and canvas charts |
+| Testing | Scoring against the simulator's answer keys; headless Chromium (Playwright) for the UI |
+
+## Screenshots - every tab
+
+<table>
+<tr>
+<td width="50%" valign="top"><img src="docs/images/01-today.png" alt="Today"><br><b>1 · Today</b> - results against 7,500 cars, the priority queue ranked by the impact ranker, decisions needed and what the last shifts said.</td>
+<td width="50%" valign="top"><img src="docs/images/02-investigate.png" alt="Investigate"><br><b>2 · Investigate</b> - is a drop real, and is it the machine, the people, the method or the station? Week timeline, cause probabilities and the evidence.</td>
+</tr>
+<tr>
+<td valign="top"><img src="docs/images/03-contain.png" alt="Contain"><br><b>3 · Contain</b> - which cars wait for a check, which move on, and should the line stop? Suspect window, every car in scope, who decides.</td>
+<td valign="top"><img src="docs/images/04-change.png" alt="Change"><br><b>4 · Change</b> - check, approve by role, pilot, release: the handover sheet and the change pipeline with the gates that block bad versions.</td>
+</tr>
+<tr>
+<td valign="top"><img src="docs/images/05-maintain.png" alt="Maintain"><br><b>5 · Maintain</b> - how often each machine should be checked (Weibull fit on fleet history) and what is due next.</td>
+<td valign="top"><img src="docs/images/06-capacity.png" alt="Capacity"><br><b>6 · Capacity</b> - can the line still make 7,500 cars a week, and what costs the most capacity; one click copies the update for planning.</td>
+</tr>
+<tr>
+<td valign="top"><img src="docs/images/07-shift-notes.png" alt="Shift notes"><br><b>7 · Shift notes</b> - what people wrote, next to the facts GPT-5 extracted: early warnings, safety items only people saw, disputes.</td>
+<td valign="top"><img src="docs/images/08-factory-map.png" alt="Factory map"><br><b>8 · Factory map</b> - every problem pinned where it happened on the site plan, down to the machine, with a line back to its source.</td>
+</tr>
+<tr>
+<td valign="top"><img src="docs/images/09-live-line.png" alt="Live line"><br><b>9 · Live line</b> - a new week streamed car by car: station charts with spec limits and flagged cars, the event feed, cases decided live.</td>
+<td valign="top"><img src="docs/images/10-how-it-works.png" alt="How it works"><br><b>0 · How it works</b> - the workflow of all models with this week's numbers; "Trace a problem" animates one case through the models.</td>
+</tr>
+<tr>
+<td colspan="2" valign="top"><img src="docs/images/11-copilot.png" alt="Copilot"><br><b>Copilot</b> (press <code>/</code> on any page) - ask in plain words; GPT-5 answers from the models' tools, cites every case, rule and change ID, and names who decides.</td>
+</tr>
+</table>
+
+## Quick start
+
+The repo includes the demo database, the trained models and the saved GPT-5 answers, so the app runs
+straight away - no API key needed:
 
 ```bash
-cd "Product Eng Curser "
+git clone https://github.com/mazzyy/Product-Eng-Curser.git
+cd Product-Eng-Curser
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python app.py                  # opens http://127.0.0.1:8000
+```
+
+To use GPT-5 live (new notes, your own copilot questions), copy `.env.example` to `.env` and add your
+Azure OpenAI key. `.env` is in `.gitignore`.
+
+## Rebuild everything from scratch (about 1 minute on a MacBook)
+
+Only needed if you change the simulator or the models - the repo already contains the results.
+
+```bash
+cd Product-Eng-Curser
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
@@ -148,7 +247,7 @@ Needs `pip install websockets`.
 
 ## Live line and the workflow (`live.py`, pages **Live line** and **How it works**)
 
-![Workflow](charts/workflow.png)
+![Live line](docs/images/09-live-line.png)
 
 `live.py` streams a simulated week in accelerated real time and runs every model on the data **as it
 arrives** - the models do not see the future. The week is built by the simulator (the demo story, or a
@@ -691,6 +790,8 @@ FROM st013 s JOIN incidents i USING (incident_id) WHERE s.anomaly_flag = 1;
 | `live.py` | Live line: streams a simulated week through all models in accelerated real time (`--fast` to evaluate) |
 | `frontend/js/map/site.js`, `frontend/js/pages/map.js`, `frontend/img/factory-map.jpg` | Factory map: zones (from gigafactory-monitor + added buildings), our line, flows, `locate()` a problem; the page |
 | `gigafactory-monitor/` | The original React tablet HMI with the site plan; can show our live alerts via `/ws/alerts` |
+| `docs/images/` | Screenshots of every tab, the live-line GIF, the end-to-end flow and the architecture image used in this README |
+| `presentation/` | Pitch deck notes (timing, script) and slide-ready screenshots |
 | `charts/factory-map.png` | Screenshot of the factory map |
 | `charts/workflow.png` | The workflow diagram (light; `workflow-dark.png` for dark slides) |
 | `.env.example` | Azure settings template (copy to `.env`, which git ignores) |

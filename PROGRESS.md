@@ -18,7 +18,7 @@ bottom every time we work on the project, so you can see what was done at each p
 | 8 | Maintenance predictor | How often to check each machine | **v1 built (step 8)**: Weibull fit on fleet history, wear / silent / random policies, next due | `maintenance.py` |
 | 9 | Agent | Uses all the others as tools | **v1 built (step 9)**: Azure GPT-5 with 13 read-only tools, cited answers, follow-ups, cache + offline fallback | `agent.py`, `agent_tools.py` |
 
-Also built: **the app** (`app.py` + `frontend/`, step 10), **the live line + workflow diagram** (`live.py`, step 11), **the factory map** (step 12), **the pitch deck** (`presentation/`, step 14), people model (`train_people_model.py`), charts (`plot_station.py`, `plot_people.py`, `plot_causes.py`, `plot_impacts.py`, `plot_method.py`, `plot_floor.py`).
+Also built: **the app** (`app.py` + `frontend/`, step 10), **the live line + workflow diagram** (`live.py`, step 11), **the factory map** (step 12), **the pitch deck** (`presentation/`, step 14), **README screenshots and flow images** (`docs/images/`, step 15), people model (`train_people_model.py`), charts (`plot_station.py`, `plot_people.py`, `plot_causes.py`, `plot_impacts.py`, `plot_method.py`, `plot_floor.py`).
 
 Plan for the rest: [System design for the remaining models](https://claude.ai/code/artifact/1c103c0d-14c3-49d5-ba62-1e113bc3e8df) (step 5).
 
@@ -788,3 +788,37 @@ live alerts. No console errors. `/api/map` checked on pandas 2.3 (your Mac) and 
 
 **Not done:** uploading the app screenshots into Canva. The network policy blocks canva.com uploads from
 here, so they are in `presentation/images/` for a manual drag-in (about 1 minute).
+
+### Step 15 - 2026-09-26 - Repo cleanup and a README with images of every tab
+
+**What**
+
+- **README top rewritten for GitHub:**
+  - hero screenshot and a one-line definition ("an AI copilot for production engineering: a
+    decision-support layer on top of the MES");
+  - *At a glance* (what kind of software, for whom, questions it answers, results, runs offline);
+  - the live line as an animated GIF;
+  - *How it works*: the workflow diagram, a new **one problem end to end** image (NR-012) and a new
+    **architecture** image;
+  - *Tech* table;
+  - *Screenshots - every tab*: all 10 pages plus the copilot, each with a one-line caption;
+  - *Quick start* for a fresh clone (the repo ships the demo database, models and saved GPT-5 answers,
+    so `python app.py` works without a key). The old run list is now "Rebuild everything from scratch".
+- **New images in `docs/images/`:** `01-today` ... `10-how-it-works`, `11-copilot` (light theme,
+  2000x1250), `live-line.gif` (2 MB), `flow-one-problem.png`, `architecture.png`.
+- **Cleanup:** deleted `__pycache__/` (was committed), `Claude outputs/` (old unused screenshots),
+  `_to_delete/` and `.DS_Store`. `.gitignore` now also ignores `__pycache__/`, `*.pyc`,
+  `node_modules/`, `dist/`, `.env.local`.
+- **Added `.env.example`** (the README pointed to it, but it was missing): the four Azure settings with
+  placeholders, no key.
+
+**How**
+
+- Screenshots were taken from a copy of this folder in the cloud workspace: `python app.py`, then
+  headless Chromium at 1600x1000 (scale 1.25), toasts hidden, day theme. Investigate, Contain and the
+  map open on case 7 (NR-012); How it works is caught mid-way through "Trace a problem"; the live line
+  ran the demo week at the top speed.
+- The flow and architecture images are small HTML pages in the TAKT design, rendered to PNG.
+
+**To publish:** `git add -A && git commit -m "Clean up repo, add screenshots to README" && git push`
+(`-A` also records the removal of `__pycache__/` and `Claude outputs/`, which were committed before).
