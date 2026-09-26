@@ -109,6 +109,8 @@ STATIONS = {
         "retry_cost_s": 2.5,          # one re-hit of a bolt
         "temperature_c": 24.0,
         "upstream": None,
+        # 1-10: what a bad part here can do to the customer (used by the impact ranker)
+        "severity": 9, "severity_why": "safety-critical joint (front subframe)",
         "wi": "WI-012",
         "batch": ("BL", "bolt batch"),
         # equipment per symptom family: (name, what goes wrong, repair logged when fixed)
@@ -137,6 +139,7 @@ STATIONS = {
         "retry_cost_s": 4.0,          # one re-seat of the fill head
         "temperature_c": 24.0,
         "upstream": "st012",          # every VIN here should have passed ST012 first
+        "severity": 8, "severity_why": "EV coolant circuit - a leak hurts battery cooling",
         "wi": "WI-013",
         "batch": ("CL", "coolant batch"),
         "equipment": {
@@ -221,6 +224,54 @@ CREATE TABLE incidents (
     evidence      TEXT,              -- why, in plain words
     graph         TEXT               -- evidence graph: incident -> candidate culprits with strength
 );
+"""
+
+
+# ---------------------------------------------------------------------------
+# Impacts: every problem of the week in one ranked list (impact_ranker.py)
+# ---------------------------------------------------------------------------
+IMPACTS_SQL = """
+DROP TABLE IF EXISTS impacts;
+CREATE TABLE impacts (
+    impact_id     INTEGER PRIMARY KEY,
+    rank          INTEGER,           -- 1 = matters most
+    category      TEXT,              -- High | Medium | Low
+    priority      REAL,              -- 0..100 = max(score_now, score_next_week)
+    score_now     REAL,              -- impact this week
+    score_next    REAL,              -- impact next week if nothing changes
+    rule          TEXT,              -- hard rule that forced the category, if any
+    source        TEXT,              -- cause finder | signal checker | people model | downtime
+    title         TEXT,
+    detail        TEXT,
+    stations      TEXT,
+    cause         TEXT,              -- machine | people | method | station | data | unknown
+    culprit       TEXT,
+    case_id       INTEGER,           -- link to incidents.case_id (cause-finder items)
+    status        TEXT,              -- active | recurring | fixed | over | quiet | one-off
+    first_ts      TEXT,
+    last_ts       TEXT,
+    cars          INTEGER,           -- cars built while it was happening
+    risk_cars     REAL,              -- cars that may not be OK, weighted
+    known_bad     INTEGER,           -- cars known to be out of spec that were passed as OK
+    definite_cars INTEGER,           -- cars that certainly need a check (known bad, no record, no measurement)
+    margin_used   REAL,              -- worst share of the safety margin the key signal used up (0..1)
+    lost_cars     REAL,              -- output lost at the bottleneck
+    rework_h      REAL,              -- labour hours: rework, checks, repairs
+    people_h      REAL,              -- hours people worked under strain
+    sq            REAL,              -- sub-scores 0..10: safety & quality, delivery, cost, people
+    dl            REAL,
+    co            REAL,
+    pe            REAL,
+    action        TEXT               -- suggested next step and owner
+);
+DROP TABLE IF EXISTS impact_catalog;
+CREATE TABLE impact_catalog (       -- problems that could happen, scored with the same formula
+    station TEXT, cause TEXT, family TEXT, problem TEXT, assumed TEXT,
+    risk_cars REAL, definite_cars REAL, lost_cars REAL, rework_h REAL, people_h REAL,
+    score REAL, category TEXT, rule TEXT, seen_this_week INTEGER
+);
+DROP TABLE IF EXISTS impact_summary;
+CREATE TABLE impact_summary (key TEXT PRIMARY KEY, value TEXT);
 """
 
 

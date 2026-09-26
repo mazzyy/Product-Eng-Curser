@@ -1,0 +1,9 @@
+{
+  "wi_version": "WI-012 v7",
+  "base": "WI-012 v6",
+  "rollout": "2026-09-22 06:00",
+  "change_note": "Bolts arrive pre-kitted in a tray from ST011: picking 3.0 s -> 1.0 s",
+  "changes": [
+    {"op": "edit", "key": "pick", "set": {"text": "Take the pre-kitted tray with 4 bolts", "time_s": 1.0}}
+  ]
+}

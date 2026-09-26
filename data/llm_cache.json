@@ -1,0 +1,693 @@
+{
+ "ef5e02bb25f05e5ddd76bba8": {
+  "facts": [
+   {
+    "station": "st012",
+    "time_hint": "13:40",
+    "category": "material",
+    "subject": "BL-4471",
+    "symptom": "many re-hits, suspect bad batch",
+    "action": null,
+    "status": "open",
+    "severity": "medium",
+    "quote": "BL-4471 parts bad? many re-hits ~13:40"
+   }
+  ],
+  "answer": {
+   "confirms": "n/a",
+   "cause": null,
+   "decision": null
+  }
+ },
+ "46986f9ee9861f1cafc5d908": {
+  "facts": [
+   {
+    "station": "st012",
+    "time_hint": null,
+    "category": "people",
+    "subject": "OP-B2",
+    "symptom": "Operator uses own method at ST012, no NOKs",
+    "action": null,
+    "status": "monitoring",
+    "severity": "low",
+    "quote": "B2 has his own way at ST012, no NOKs though."
+   },
+   {
+    "station": "st012",
+    "time_hint": "21:10",
+    "category": "material",
+    "subject": "BL-4471",
+    "symptom": "Bolt batch blocked at 21:10",
+    "action": "Switched to new pallet, OK",
+    "status": "fixed",
+    "severity": "medium",
+    "quote": "batch BL-4471 blocked 21:10, new pallet ok."
+   }
+  ],
+  "answer": {
+   "confirms": "n/a",
+   "cause": null,
+   "decision": null
+  }
+ },
+ "7669cc6c50b76a0b7d2038f3": {
+  "facts": [
+   {
+    "station": "st012",
+    "time_hint": null,
+    "category": "material",
+    "subject": "BL-4471",
+    "symptom": "bolt batch BL-4471 out of spec",
+    "action": "pallets blocked and sent back",
+    "status": "info",
+    "severity": "high",
+    "quote": "yes, supplier confirmed BL-4471 out of spec. pallets blocked and sent back"
+   }
+  ],
+  "answer": {
+   "confirms": "yes",
+   "cause": "station",
+   "decision": "block and return BL-4471 pallets"
+  }
+ },
+ "aae1d919b94b923a84888294": {
+  "facts": [
+   {
+    "station": null,
+    "time_hint": null,
+    "category": "people",
+    "subject": "OP-C1",
+    "symptom": "needs a lot of re-hits",
+    "action": "paired with OP-C2 for a few hours",
+    "status": "monitoring",
+    "severity": "medium",
+    "quote": "C1 needs a lot of re-hits, paired with OP-C2 for a few hours"
+   }
+  ],
+  "answer": {
+   "confirms": "n/a",
+   "cause": null,
+   "decision": null
+  }
+ },
+ "1c973b79201e10392c07d336": {
+  "facts": [
+   {
+    "station": "st012",
+    "time_hint": null,
+    "category": "people",
+    "subject": "OP-B2",
+    "symptom": "Angles off normal pattern by -1.1 sigma",
+    "action": null,
+    "status": "info",
+    "severity": "low",
+    "quote": "don't think so. B2 works like we trained everyone and torque is in spec."
+   }
+  ],
+  "answer": {
+   "confirms": "no",
+   "cause": "machine",
+   "decision": "Maintenance to inspect NR-012"
+  }
+ },
+ "45ca42d836970dace6f53834": {
+  "facts": [],
+  "answer": {
+   "confirms": "n/a",
+   "cause": null,
+   "decision": null
+  }
+ },
+ "d9cb732c7eea4fc11326bf0f": {
+  "facts": [
+   {
+    "station": "st012",
+    "time_hint": null,
+    "category": "method",
+    "subject": "WI-012 v4",
+    "symptom": "ST012 behind due to new check step",
+    "action": null,
+    "status": "open",
+    "severity": "high",
+    "quote": "ST 012 behind all shift because of the new check step in WI-012 v4"
+   },
+   {
+    "station": "st013",
+    "time_hint": null,
+    "category": "method",
+    "subject": "WI-013 v7",
+    "symptom": "WI-013 v7 live, only new photos",
+    "action": null,
+    "status": "info",
+    "severity": "low",
+    "quote": "WI-013 v7 live - only new photos, no issue"
+   }
+  ],
+  "answer": {
+   "confirms": "n/a",
+   "cause": null,
+   "decision": null
+  }
+ },
+ "79ff825929c07e58409711c4": {
+  "facts": [],
+  "answer": {
+   "confirms": "n/a",
+   "cause": null,
+   "decision": null
+  }
+ },
+ "60cc2c6f2dbd559c2bb038a4": {
+  "facts": [
+   {
+    "station": "st012",
+    "time_hint": null,
+    "category": "people",
+    "subject": "OP-C1",
+    "symptom": "new on the torque station since 2 weeks",
+    "action": "trainer session booked, paired with C2",
+    "status": "info",
+    "severity": "low",
+    "quote": "C1 is new on the torque station since 2 weeks. trainer session booked thursday, paired with C2 until then"
+   }
+  ],
+  "answer": {
+   "confirms": "yes",
+   "cause": "people",
+   "decision": "trainer session Thursday, pair with C2 until then"
+  }
+ },
+ "f4f2c57070c0da1eee50b480": {
+  "facts": [
+   {
+    "station": "st012",
+    "time_hint": null,
+    "category": "method",
+    "subject": "WI-012 v4",
+    "symptom": "extra check should be an audit only",
+    "action": "limit to 1 in 20 in next version",
+    "status": "info",
+    "severity": "low",
+    "quote": "yes it came with WI-012 v4, but it should only be an audit"
+   }
+  ],
+  "answer": {
+   "confirms": "yes",
+   "cause": "method",
+   "decision": "limit audit check to 1 in 20 in WI-012 v5"
+  }
+ },
+ "9e463d63cd65130f03049a24": {
+  "facts": [
+   {
+    "station": "line",
+    "time_hint": "10:00",
+    "category": "it",
+    "subject": "MES",
+    "symptom": "VINs not booked due to network/MES outage",
+    "action": "IT fixed booking issue",
+    "status": "fixed",
+    "severity": "medium",
+    "quote": "network/MES Störung since 10:00 - VINs not booked, IT fixed it"
+   },
+   {
+    "station": "st013",
+    "time_hint": null,
+    "category": "safety",
+    "subject": "coolant puddle",
+    "symptom": "coolant puddle under 013 conveyor, slip risk",
+    "action": "cleaned, maintenance ticket open",
+    "status": "monitoring",
+    "severity": "high",
+    "quote": "small coolant puddle under the 013 conveyor - slip risk, cleaned, ticket open"
+   }
+  ],
+  "answer": {
+   "confirms": "n/a",
+   "cause": null,
+   "decision": null
+  }
+ },
+ "cdd9ea7583c5a04b784ffd56": {
+  "facts": [
+   {
+    "station": "st012",
+    "time_hint": null,
+    "category": "machine",
+    "subject": "NR-012",
+    "symptom": "nutrunner feels different today",
+    "action": "watching it",
+    "status": "monitoring",
+    "severity": "medium",
+    "quote": "NR-012 feels different today, watching it."
+   },
+   {
+    "station": "st012",
+    "time_hint": "14:00",
+    "category": "method",
+    "subject": "WI-012 v5",
+    "symptom": "new WI live, extra check removed",
+    "action": "back on pace",
+    "status": "info",
+    "severity": "low",
+    "quote": "WI-012 v5 live since 14:00, extra check gone"
+   },
+   {
+    "station": "st012",
+    "time_hint": null,
+    "category": "safety",
+    "subject": "light curtain",
+    "symptom": "light curtain flickers intermittently",
+    "action": "reported to maintenance",
+    "status": "open",
+    "severity": "high",
+    "quote": "light curtain at ST012 flickers sometimes, reported to maint."
+   }
+  ],
+  "answer": {
+   "confirms": "n/a",
+   "cause": null,
+   "decision": null
+  }
+ },
+ "589987d4ec96740a37a639d1": {
+  "facts": [
+   {
+    "station": "st012",
+    "time_hint": "08:30",
+    "category": "machine",
+    "subject": "NR-012",
+    "symptom": "torque calibration drifting; station down 27 min",
+    "action": "Recalibrated nutrunner; returned to service",
+    "status": "fixed",
+    "severity": "medium",
+    "quote": "Nutrunner recalibrated (NR-012). Down 27 min. Found: torque calibration drifting."
+   }
+  ],
+  "answer": {
+   "confirms": "n/a",
+   "cause": null,
+   "decision": null
+  }
+ },
+ "6c64fdc8446fba67069a9e80": {
+  "facts": [
+   {
+    "station": "line",
+    "time_hint": null,
+    "category": "it",
+    "subject": "MES",
+    "symptom": "29% cars missing VIN scans at ST013 and ST012",
+    "action": "ask IT on-call",
+    "status": "info",
+    "severity": "low",
+    "quote": "not sure, IT didn't tell us anything."
+   }
+  ],
+  "answer": {
+   "confirms": "unclear",
+   "cause": null,
+   "decision": "ask IT on-call"
+  }
+ },
+ "7fdafadfc4f363bbd171a554": {
+  "facts": [
+   {
+    "station": "st012",
+    "time_hint": "00:00",
+    "category": "machine",
+    "subject": "NR-012",
+    "symptom": "NR-012 torque values drifting, increased re-hits",
+    "action": "maintenance ticket open",
+    "status": "open",
+    "severity": "medium",
+    "quote": "NR-012 values drifting ~00:00, more re-hits than normal - ticket open."
+   },
+   {
+    "station": "st012",
+    "time_hint": null,
+    "category": "people",
+    "subject": "OP-C1",
+    "symptom": "struggling with re-hits at ST012",
+    "action": "coached technique once more",
+    "status": "monitoring",
+    "severity": "medium",
+    "quote": "OP-C1 struggling with the re-hits again, showed the technique once more."
+   },
+   {
+    "station": "st012",
+    "time_hint": "22:00",
+    "category": "supply",
+    "subject": "ST011",
+    "symptom": "no bodies arriving from ST011",
+    "action": "supply resumed at 02:30",
+    "status": "fixed",
+    "severity": "high",
+    "quote": "waited for bodies since 22:00, supply from ST011 stopped - back 02:30"
+   }
+  ],
+  "answer": {
+   "confirms": "n/a",
+   "cause": null,
+   "decision": null
+  }
+ },
+ "29e4efd5ec252b8e8523e6f1": {
+  "facts": [
+   {
+    "station": "st012",
+    "time_hint": "08:30",
+    "category": "machine",
+    "subject": "NR-012",
+    "symptom": "NR-012 repaired and recalibrated by maintenance",
+    "action": "Recalibrated; nutrunner OK again",
+    "status": "fixed",
+    "severity": "low",
+    "quote": "maint. did the repair on NR-012 (nutrunner recalibrated) 08:30 -> ok again"
+   }
+  ],
+  "answer": {
+   "confirms": "n/a",
+   "cause": null,
+   "decision": null
+  }
+ },
+ "738c3d2a8dc4cbef894814cb": {
+  "facts": [],
+  "answer": {
+   "confirms": "n/a",
+   "cause": null,
+   "decision": null
+  }
+ },
+ "d9042a06f1092e5143af3e69": {
+  "facts": [
+   {
+    "station": "st012",
+    "time_hint": null,
+    "category": "machine",
+    "subject": "NR-012",
+    "symptom": "torque calibration drifting found by maintenance",
+    "action": "repaired; station fine since",
+    "status": "info",
+    "severity": "low",
+    "quote": "correct, Instandhaltung found it: torque calibration drifting. repaired, fine since"
+   }
+  ],
+  "answer": {
+   "confirms": "yes",
+   "cause": "machine",
+   "decision": "repaired, fine since"
+  }
+ },
+ "44dad9fcce04e8792a14f12e": {
+  "facts": [
+   {
+    "station": "st013",
+    "time_hint": "06:30",
+    "category": "machine",
+    "subject": "CF-013",
+    "symptom": "re-tests increasing since 06:30, head looks worn",
+    "action": "maintenance informed",
+    "status": "monitoring",
+    "severity": "medium",
+    "quote": "re-tests going up at 06:30, looks worn, maint. informed"
+   },
+   {
+    "station": "st012",
+    "time_hint": null,
+    "category": "method",
+    "subject": "WI-012 v6",
+    "symptom": "new version wording only",
+    "action": null,
+    "status": "info",
+    "severity": "low",
+    "quote": "new WI-012 v6 - just wording, nothing changed for us"
+   }
+  ],
+  "answer": {
+   "confirms": "n/a",
+   "cause": null,
+   "decision": null
+  }
+ },
+ "d9ef5570e73ef44946218522": {
+  "facts": [
+   {
+    "station": "st013",
+    "time_hint": "21:30",
+    "category": "machine",
+    "subject": "CF-013",
+    "symptom": "fill head seal was replaced",
+    "action": "seal replaced, machine back to normal",
+    "status": "fixed",
+    "severity": "medium",
+    "quote": "Fill head seal replaced on CF-013 at 21:30, back to normal"
+   }
+  ],
+  "answer": {
+   "confirms": "n/a",
+   "cause": null,
+   "decision": null
+  }
+ },
+ "f1682a71f4484c23e0a00086": {
+  "facts": [
+   {
+    "station": "st013",
+    "time_hint": "21:30",
+    "category": "machine",
+    "subject": "CF-013",
+    "symptom": "fill head seal wearing, re-tests increasing",
+    "action": "replaced fill head seal; 21 min downtime",
+    "status": "fixed",
+    "severity": "medium",
+    "quote": "Fill head seal replaced (CF-013). Down 21 min."
+   }
+  ],
+  "answer": {
+   "confirms": "n/a",
+   "cause": null,
+   "decision": null
+  }
+ },
+ "28123d14c641e744fbea8db9": {
+  "facts": [
+   {
+    "station": "st013",
+    "time_hint": null,
+    "category": "machine",
+    "subject": "CF-013",
+    "symptom": "feels different today",
+    "action": "watching it",
+    "status": "monitoring",
+    "severity": "medium",
+    "quote": "CF-013 feels different today, watching it"
+   },
+   {
+    "station": "st012",
+    "time_hint": null,
+    "category": "people",
+    "subject": "OP-C1",
+    "symptom": "needs many re-hits on bolts",
+    "action": "paired with OP-C2 for a few hours",
+    "status": "monitoring",
+    "severity": "medium",
+    "quote": "C1 needs a lot of re-hits, paired with C2 for a few hours"
+   },
+   {
+    "station": null,
+    "time_hint": "04:41",
+    "category": "people",
+    "subject": "OP-C4",
+    "symptom": "very tired towards the end",
+    "action": "swapped to the easier job",
+    "status": "monitoring",
+    "severity": "medium",
+    "quote": "OP-C4 very tired towards the end, swapped to the easier job ~04:41"
+   }
+  ],
+  "answer": {
+   "confirms": "n/a",
+   "cause": null,
+   "decision": null
+  }
+ },
+ "12eb929b52a7f88b329c0531": {
+  "facts": [],
+  "answer": {
+   "confirms": "n/a",
+   "cause": null,
+   "decision": null
+  }
+ },
+ "83b54b76d77ae2d6255fd3e8": {
+  "facts": [
+   {
+    "station": "st012",
+    "time_hint": null,
+    "category": "machine",
+    "subject": "NR-012",
+    "symptom": "socket replaced as precaution, no issue",
+    "action": "replaced socket",
+    "status": "info",
+    "severity": "low",
+    "quote": "NR-012 socket replaced as a precaution, no issue"
+   }
+  ],
+  "answer": {
+   "confirms": "n/a",
+   "cause": null,
+   "decision": null
+  }
+ },
+ "4abde91066d9c62923b831c3": {
+  "facts": [
+   {
+    "station": "st012",
+    "time_hint": "09:00",
+    "category": "machine",
+    "subject": "NR-012",
+    "symptom": "preventive socket replacement, no fault found",
+    "action": "replaced socket, line down 17 minutes",
+    "status": "info",
+    "severity": "low",
+    "quote": "Socket replaced (NR-012). Down 17 min. Found: preventive, no fault found."
+   }
+  ],
+  "answer": {
+   "confirms": "n/a",
+   "cause": null,
+   "decision": null
+  }
+ },
+ "de5bf50cefc217c177d6429b": {
+  "facts": [
+   {
+    "station": "st013",
+    "time_hint": null,
+    "category": "method",
+    "subject": "WI-013 v8",
+    "symptom": "second VIN scan added by WI v8",
+    "action": "remove second scan in next version",
+    "status": "info",
+    "severity": "low",
+    "quote": "the second scan is from WI-013 v8"
+   }
+  ],
+  "answer": {
+   "confirms": "yes",
+   "cause": "method",
+   "decision": "remove second scan in next WI version"
+  }
+ },
+ "093bfb8777844072b9f9f482": {
+  "facts": [],
+  "answer": {
+   "confirms": "n/a",
+   "cause": null,
+   "decision": null
+  }
+ },
+ "8a0e93d08238b7ee7f09f08a": {
+  "facts": [],
+  "answer": {
+   "confirms": "n/a",
+   "cause": null,
+   "decision": null
+  }
+ },
+ "813694f92ae87a2523983d0c": {
+  "facts": [
+   {
+    "station": "st013",
+    "time_hint": null,
+    "category": "it",
+    "subject": "MES",
+    "symptom": "VIN double scans, board count wrong",
+    "action": null,
+    "status": "open",
+    "severity": "medium",
+    "quote": "double scans at 013 again, board count still wrong (WI-013 v8)"
+   }
+  ],
+  "answer": {
+   "confirms": "n/a",
+   "cause": null,
+   "decision": null
+  }
+ },
+ "91d8bdb3cdfc008d11aec543": {
+  "facts": [
+   {
+    "station": null,
+    "time_hint": "19:02",
+    "category": "people",
+    "subject": "OP-B4",
+    "symptom": "operator tired near end of shift",
+    "action": "moved to easier job",
+    "status": "monitoring",
+    "severity": "medium",
+    "quote": "OP-B4 very tired towards the end, swapped to the easier job ~19:02"
+   },
+   {
+    "station": "st013",
+    "time_hint": null,
+    "category": "method",
+    "subject": "WI-013 v8",
+    "symptom": "now scan twice at 013",
+    "action": null,
+    "status": "info",
+    "severity": "low",
+    "quote": "since WI-013 v8 we scan twice at 013"
+   },
+   {
+    "station": "line",
+    "time_hint": null,
+    "category": "it",
+    "subject": "MES",
+    "symptom": "production count on board is wrong",
+    "action": null,
+    "status": "open",
+    "severity": "medium",
+    "quote": "production count on the board is wrong"
+   },
+   {
+    "station": "st013",
+    "time_hint": null,
+    "category": "safety",
+    "subject": "forklift in aisle",
+    "symptom": "forklift blocked aisle near 013 for 10 minutes",
+    "action": null,
+    "status": "info",
+    "severity": "high",
+    "quote": "forklift parked in the aisle next to 013 for ~10 min"
+   }
+  ],
+  "answer": {
+   "confirms": "n/a",
+   "cause": null,
+   "decision": null
+  }
+ },
+ "e5f9b4053fad38d2e7b423cd": {
+  "facts": [
+   {
+    "station": "st012",
+    "time_hint": null,
+    "category": "people",
+    "subject": "OP-C1",
+    "symptom": "needs many re-hits at bolt station",
+    "action": "paired with OP-C2 for a few hours",
+    "status": "monitoring",
+    "severity": "medium",
+    "quote": "OP-C1 needs a lot of re-hits, paired with C2 for a few hours."
+   }
+  ],
+  "answer": {
+   "confirms": "n/a",
+   "cause": null,
+   "decision": null
+  }
+ }
+}

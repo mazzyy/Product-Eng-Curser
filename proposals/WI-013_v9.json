@@ -1,0 +1,12 @@
+{
+  "wi_version": "WI-013 v9",
+  "base": "WI-013 v8",
+  "rollout": "2026-09-22 06:00",
+  "change_note": "Remove the second VIN scan; top up coolant by hand when the fill is low (about 1 in 10 cars)",
+  "changes": [
+    {"op": "remove", "key": "scan2"},
+    {"op": "add", "after": "verify", "step": {
+      "key": "topup", "text": "Top up coolant by hand if the fill volume is low", "kind": "manual",
+      "time_s": 6.0, "every": 0.1, "hazard": "chemical", "qualification": "Coolant top-up"}}
+  ]
+}

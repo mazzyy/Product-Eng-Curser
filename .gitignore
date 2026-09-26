@@ -1,0 +1,7 @@
+# secrets - never commit the API key
+.env
+# local clutter
+.DS_Store
+.venv/
+_to_delete/
+data/*.db-journal

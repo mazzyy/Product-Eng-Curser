@@ -10,15 +10,17 @@ bottom every time we work on the project, so you can see what was done at each p
 | 0 | Line simulator | Dummy Tesla-style data + the true answers | **Built for 2 stations**: crews, rotation, WI versions, batches, repairs, 16 root-cause scenario types, demo week + random training weeks. Missing: full line, 45 s takt, notes text, maintenance history | `generate_data.py`, `station_db.py` |
 | 1 | Signal checker | Real drop or noise? | Mostly built at row level (rules + ML); block-level KPI z-scores now exist in the cause finder | `train_model.py` |
 | 2 | Cause finder | Method, people, station or machine? | **v1 built (step 3)**: 95% on held-out weeks, 11/11 on the demo week | `cause_finder.py`, `train_cause_model.py`, `find_causes.py`, `plot_causes.py` |
-| 3 | Impact ranker | What matters most, bottleneck, 7,500? | Not started | - |
-| 4 | Floor listener | Handover notes -> structured data | Not started | - |
-| 5 | Method checker | Fits 45 s, safe, trained? | Groundwork only (standard times, andon and rest rules, WI versions in data) | - |
+| 3 | Impact ranker | What matters most, bottleneck, 7,500? | **v1 built (step 4)**: formula + High/Medium/Low, next-week projection, bottleneck and 7,500 check, catalog of possible problems | `impact_ranker.py`, `plot_impacts.py` |
+| 4 | Floor listener | Handover notes -> structured data | **v1 built (step 6)**: Azure GPT-5 (strict JSON) + offline fallback; links notes to incidents (agrees / early warning / notes only / disputes) | `generate_notes.py`, `floor_listener.py`, `plot_floor.py` |
+| 5 | Method checker | Fits takt, safe, trained? | **v1 built (step 6)**: 15 fixed rules vs 50 s takt; history + proposals; 46/46 bad versions caught on 30 random weeks | `method_data.py`, `method_checker.py`, `plot_method.py`, `proposals/` |
 | 6 | Change manager | Versions, approval, rollout, after-check | Groundwork only (WI version per cycle) | - |
 | 7 | Containment | Which cars to hold, stop or not | Groundwork only (suspect cars flagged; incidents link to cars) | - |
 | 8 | Maintenance predictor | How often to check each machine | Not started (repairs + drift now in the data) | - |
 | 9 | Agent | Uses all the others as tools | Not started (database built to be agent-readable) | - |
 
-Also built: people model (`train_people_model.py`), charts (`plot_station.py`, `plot_people.py`, `plot_causes.py`).
+Also built: people model (`train_people_model.py`), charts (`plot_station.py`, `plot_people.py`, `plot_causes.py`, `plot_impacts.py`, `plot_method.py`, `plot_floor.py`).
+
+Plan for the rest: [System design for the remaining models](https://claude.ai/code/artifact/1c103c0d-14c3-49d5-ba62-1e113bc3e8df) (step 5).
 
 ---
 
@@ -176,5 +178,245 @@ culprit. The model should be learned, with an evidence graph.
 **Run:** `python generate_data.py && python train_model.py && python train_people_model.py &&
 python train_cause_model.py && python find_causes.py && python plot_causes.py`
 
-**Note:** the folder is now a git repo (your commit `c363237` on 2026-09-26 01:30). The final
-fixes of step 3 are not committed yet.
+**Note:** the folder is a git repo; step 3 is in your commits `c363237`, `4ffabd6` and `cc9d6d4`.
+
+### Step 4 - 2026-09-26 - Impact ranker (model 3) v1
+
+**Goal:** from everything already in the database, rank the impacts - the ones we had and the ones
+we could have - with an explicit formula, and put each in High / Medium / Low. Also answer: where is
+the bottleneck, and can we hit 7,500 cars a week?
+
+**Decisions agreed (2026-09-26):** the priority order is Safety > Quality > Delivery > Cost (plus
+people), and 7,500 means cars per week.
+
+**What we did**
+
+1. **Collect impact items** from what the models already wrote, without re-analysing raw data:
+   - cause-finder cases (11);
+   - signal-checker flags outside incidents, grouped by kind and station;
+   - people-model findings (rushed, struggle, re-hit bursts, stale logins, andon without team
+     lead, rest-time breach);
+   - faults grouped by code, and unplanned repairs no incident explains.
+
+   Flags that fall inside a case's window are folded into that case (e.g. extra double scans
+   under WI-013 v8). That gives **49 items**.
+2. **Measure each item** in four currencies: risk cars, lost cars, rework hours and people hours.
+   - Lost cars use the bottleneck logic: ST012 at 50 s/car loses everything; ST013 only loses what
+     its 3 s spare time per car can't absorb.
+   - Pattern risk uses "share of the safety margin used up".
+3. **Score:** log sub-scores 0-10, then 10 × (0.40·SQ + 0.30·DL + 0.15·CO + 0.15·PE).
+4. **Categories:**
+   - High from 50, Medium from 25, Low below.
+   - Hard rules for High: known-bad cars passed; definite cars ≥ 10·3^(9−S); ≥ 30% of the margin
+     on a safety-critical signal; ≥ 75 lost cars; a legal rest-time breach.
+   - Medium floor: severity ≥ 8 with any risk cars.
+5. **Future:**
+   - Active items are projected over the next 7 days; recurring ones repeat. Priority = max(now,
+     next week).
+   - `impact_catalog` scores 16 problem types × 2 stations "if it happened next week" with the same
+     formula.
+6. **7,500 check:** capacity from the bottleneck minus planned maintenance, cars built at the last
+   station, lost cars, and next week's projection (`impact_summary`).
+7. **New tables:** `impacts`, `impact_catalog`, `impact_summary`. New column: `severity` in the
+   station config. Chart: `plot_impacts.py`.
+
+**How - key decisions**
+
+- **Log scales:** so 10× more impact is a fixed step and huge counts can't dominate.
+- **Hard rules:** some things can't be averaged away - a known-bad safety part, a legal breach, or
+  a big output loss.
+- **Bottleneck-aware lost cars:** a slow non-bottleneck station doesn't cost output until it uses
+  up its spare time. So faults at ST013 score Low and faults at ST012 score higher.
+- **Sanity check:** the ranked problems explain 698 lost cars. The actual gap between capacity and
+  cars built is 640, so the estimate is about 9% high - good enough to rank with.
+
+**Result (demo week)**
+
+- **Categories:** 13 High, 20 Medium, 16 Low.
+- **Top items:**
+  1. Nutrunner NR-012 drift - 64, used 46% of the safety margin.
+  2. MES outage - 136 cars to verify.
+  3. WI-013 v8 - still active, grows next week.
+  4. Andon calls without team lead - 99 lost cars.
+  5. WI-012 v4 - 252 lost cars.
+- **People cases:** all Medium.
+- **Can we hit 7,500?** Yes: 11,241 built (150%); ~11,617 projected for next week. On a 5-day week
+  it would be 8,041 (107%), which is the more realistic frame.
+- **Could happen next:** a failing VIN scanner and a calibration drift on ST012 would be the worst.
+- **Tested on:** pandas 2.3 and 3.0, same results. It runs in under 1 s.
+
+**Limits / next ideas**
+
+- The weights, severities, rework minutes and thresholds are assumptions. They are constants at the
+  top of `impact_ranker.py` and should be tuned with the plant.
+- The 7,500 check uses a 24/7 simulated week; a real shift calendar would make it tighter.
+- There are no € values yet; adding cost per lost car and per rework hour would allow ranking in money.
+- **Next:** model 7 (containment) can take the "definite cars" lists straight from these items.
+  Model 9 (agent) can read `impacts` to answer "what should I do first today?".
+
+**Run:** `python impact_ranker.py && python plot_impacts.py` (after the other models).
+Step 4 is not committed to git yet.
+
+### Step 5 - 2026-09-26 - System design for the remaining models (no code)
+
+**What**
+
+- Wrote the system design doc:
+  [Production Copilot - System Design for the Remaining Models](https://claude.ai/code/artifact/1c103c0d-14c3-49d5-ba62-1e113bc3e8df).
+- **Done so far:** 0 simulator (2 stations), 1 signal checker (row level), 2 cause finder v1,
+  3 impact ranker v1, plus the people model.
+- **Remaining:** 1 upgrade (line level), 4 floor listener, 5 method checker, 6 change manager,
+  7 containment, 8 maintenance predictor, 9 agent, and simulator v3.
+
+**How - the design**
+
+- **Shared foundations first:** `pipeline.py` runs every model in order; `config.yaml` holds all
+  constants; one data contract (every model writes to the station tables or its own table);
+  `evaluate.py` scores all models against the answer keys; `tools.py` exposes each model to the agent.
+- **Simulator v3:** 6 stations, 45 s takt, 5-day shift calendar, shipping status per car,
+  WI steps + operator skills, handover-note text, 26 weeks of maintenance history.
+- **Per model:** 4 = LLM to JSON with a fixed schema; 5 = fixed rules (time, safety, training);
+  6 = state machine Draft -> Checked -> Approved -> Pilot -> Rolled out -> After-check;
+  7 = car genealogy graph + hold/stop rules; 8 = survival model; 9 = LLM agent that only quotes tools.
+- **Build order (about 14 working days):** A foundations + sim v3 -> B agent v0 (read-only, 3-pane
+  app) -> C method checker + change manager -> D containment -> E floor listener -> F stretch
+  (line-level checks, maintenance). Each phase ends with a demo gate checked by `evaluate.py`.
+
+**Open decisions** (defaults in the doc): 6 stations; 5-day week at 45 s (makes 7,500 about 83% of
+~9,000 capacity instead of 150%); Claude API for models 4 and 9; Streamlit; production engineer as
+the main user; competition deadline still unknown.
+
+**Next:** confirm the decisions, then start Phase A.
+Steps 4 and 5 are not committed to git yet.
+
+### Step 6 - 2026-09-26 - Floor listener (model 4) and method checker (model 5) v1
+
+**Decisions:** the goal is a prototype, not scale, so we kept 2 stations and today's line. The method
+checker uses a **50 s takt** (the current simulated line). The floor listener uses **Azure OpenAI GPT-5**
+(Responses API at `tasting-resource.services.ai.azure.com`), with the key in `.env`.
+
+**What - model 5, method checker**
+
+1. `method_data.py`: gives every WI version a step list: time, tool, torque, lift, hazard/PPE,
+   control-plan flag, qualification, minimum skill. Also writes operator qualifications (from skill)
+   and WI sign-offs. The bad versions get the matching bad change:
+   - speed: an extra check on every car;
+   - data: a second VIN scan;
+   - quality: the result check moved before the process step;
+   - pattern: a preparation step removed.
+2. `method_checker.py`: 15 fixed rules in 5 groups, each with a verdict of PASS, WARN or BLOCK:
+   - TIME: fits the takt; added work;
+   - SAFETY: result check after critical steps, control plan, reaction arm, manual torque, lifting,
+     PPE, hands in the machine zone;
+   - TRACE: exactly one VIN scan;
+   - PEOPLE: qualifications per crew, minimum skill, sign-off before the first cycle;
+   - REALITY: measured vs planned time, incidents the cause finder blamed on the version.
+3. Three ways to run it: over every WI version in the DB (history), on a JSON change file
+   (`--propose`, two examples in `proposals/`), or `--eval N` on random simulated weeks.
+4. New tables: `work_instructions`, `wi_steps`, `qualifications`, `wi_signoffs`, `method_checks`,
+   `method_verdicts`, `method_eval`. Chart: `charts/method.png`.
+
+**What - model 4, floor listener**
+
+1. `generate_notes.py`: 31 notes for the demo week: 21 handovers, 3 maintenance log entries and
+   7 supervisor answers to copilot questions about incidents. Written in floor style: short, some
+   German, "C1", "around 3". They include:
+   - early warnings;
+   - safety items that only people see;
+   - neutral changes.
+
+   The answer key is `data/injected_note_facts.csv` (37 facts).
+2. `floor_listener.py`:
+   - note -> facts (station, time, category, subject ID, symptom, action, status, severity, quote);
+   - supervisor answers also get confirms / cause / decision;
+   - backends: Azure GPT-5 (strict JSON schema, retries, cached in `data/llm_cache.json`) or offline
+     keyword rules when no key is set;
+   - links each fact to the incidents: agrees, early warning, notes only, disputes, unclear;
+   - scores against the answer key.
+3. New tables: `floor_notes`, `floor_facts`, `floor_eval`. Chart: `charts/floor.png`.
+4. `.env.example` (settings template) and `.gitignore` (so `.env` with the key is never committed).
+
+**How - key decisions**
+
+- **Rules, not ML, for the method checker:** every BLOCK needs a reason an engineer can act on,
+  and the limits are plant standards, not patterns to learn.
+- **The checker never sees the answer:** it reads only steps and records, never which version is
+  "bad".
+- **TIME-2 compares with the station's line-balance standard, not the version before.** Comparing with
+  the version before raised false alarms when a fix put a removed step back (3 in 12 weeks -> 0).
+- **REA-1 also warns when work is faster than planned.** WI-013 v8 is 9% faster than planned, which
+  means operators skip the second scan.
+- **The LLM output is forced into a strict JSON schema, then cleaned** (IDs like "c1" -> "OP-C1"), so
+  the rest of the pipeline never sees free text.
+- **One failed LLM call doesn't stop the run.** That note falls back to the offline parser and the run
+  says so.
+- **The cache is keyed by endpoint + model + prompt version + note.** Once GPT-5 has read every note,
+  the demo replays without a key.
+- **Tested the Azure client against a local mock of the Responses API:** request shape, `api-key`
+  header, JSON schema, a 429 retry, and fallback on a wrong key. A live call still needs your key.
+
+**Result (demo week)**
+
+- **Method checker: 2 BLOCK, 5 PASS.**
+  - WI-012 v4 is blocked: 52.4 s > 50 s takt; 120 Nm by hand on every car; crew B has 2 of 4 operators
+    without the click-wrench qualification. 38% of its cycles were built before the operator had
+    signed it.
+  - WI-013 v8 is blocked: two VIN scans per car.
+  - Proposal WI-012 v7 passes at 45 s. Proposal WI-013 v9 is blocked (no PPE, nobody qualified).
+  - On 30 random weeks: 46/46 bad versions caught, 0 false alarms on 176 harmless versions.
+- **Floor listener (offline rules): 37/37 facts found**, precision 92%, 100% of fields right, and
+  7/7 supervisor answers read right.
+  - The floor reported all 11 problems the data found.
+  - 4 early warnings: BL-4471 about 2 h early, NR-012 4 h early, CF-013 10 h early.
+  - 2 safety items that only people saw.
+  - 1 supervisor dispute (OP-B2 -> "check NR-012 first").
+- **Tested on:** pandas 2.3 and 3.0, same results.
+
+**Limits / next ideas**
+
+- The offline parser was written for this note style, so 100% flatters it. The real score is the
+  GPT-5 run. Put the key in `.env` and run `python floor_listener.py`.
+- The step catalog, qualifications and rule limits are prototype assumptions. They are constants at
+  the top of `method_data.py` and `method_checker.py`.
+- The method checker's evaluation is circular (its rules and the simulator's bad changes come from
+  the same author). It shows the rules behave, not that they would catch unknown real problems.
+- **Next:** model 6 (change manager) can use the method checker as its "Checked" gate. Model 9 (agent)
+  can call `floor_listener` / `method_checker` as tools.
+
+**Run:** `python method_data.py && python method_checker.py && python method_checker.py --propose proposals/*.json && python generate_notes.py && python floor_listener.py && python plot_method.py && python plot_floor.py`
+Steps 4-6 are not committed to git yet.
+
+### Step 7 - 2026-09-26 - First live GPT-5 run of the floor listener + fixes
+
+**What**
+
+- You ran `python floor_listener.py` with the Azure key. GPT-5 (reasoning low) read all 31 notes
+  in 45 s.
+- **Result:** 35/37 facts found, precision 92%, fields 93% right, 7/7 supervisor answers right.
+  - The floor reported all 11 problems the data found.
+  - 4 early warnings: BL-4471 2 h, NR-012 4 h, CF-013 10 h.
+  - 1 dispute (OP-B2).
+  - Safety items only people saw: coolant puddle, light curtain, forklift in the aisle.
+- It passes the 90% gate from the system design.
+
+**How - what we changed after looking at every difference**
+
+1. **Answer key.** 3 labels were honestly ambiguous. The key now lists a second accepted reading
+   (`alt_*` columns in `injected_note_facts.csv`):
+   - forklift in the aisle: other or safety;
+   - preventive repair: fixed or info;
+   - MES answer: station line.
+
+   With that, the same GPT-5 run scores 36/37, precision 95%, fields 96%. The note texts did not change.
+2. **Prompt v2** (`PROMPT_VERSION = "floor-v2"`, so the old cached answers are no longer used). It
+   addresses the real errors:
+   - clearer status definitions: open even if "maint. informed"; monitoring only for early signs or
+     supporting a person; fixed when a new WI removes a problem; info for "no NOKs";
+   - category = the cause the note points to (a WI named as the reason = method);
+   - one fact per problem, so a wrong count is a symptom, not a second fact;
+   - station from station words ("re-hits" = ST012).
+3. `--misses` prints every difference from the answer key, per note.
+4. Fixed a scoring bug where an empty alternative label counted a missing station as right.
+
+**Next:** re-run `python floor_listener.py --misses` to measure prompt v2 (about 45 s, 31 Azure calls).
+Steps 4-7 are not committed to git yet.
