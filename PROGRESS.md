@@ -16,7 +16,7 @@ bottom every time we work on the project, so you can see what was done at each p
 | 6 | Change manager | Versions, approval, rollout, after-check | **v1 built (step 8)**: gates check -> approve (by role) -> pilot -> release -> after-check; replay of the week; handover sheet | `change_manager.py` |
 | 7 | Containment | Which cars to hold, stop or not | **v1 built (step 8)**: scope by genealogy, car-by-car rework/check/hold/release, stop / quarantine / roll-back advice | `containment.py` |
 | 8 | Maintenance predictor | How often to check each machine | **v1 built (step 8)**: Weibull fit on fleet history, wear / silent / random policies, next due | `maintenance.py` |
-| 9 | Agent | Uses all the others as tools | Not started (database built to be agent-readable) | - |
+| 9 | Agent | Uses all the others as tools | **v1 built (step 9)**: Azure GPT-5 with 13 read-only tools, cited answers, follow-ups, cache + offline fallback | `agent.py`, `agent_tools.py` |
 
 Also built: people model (`train_people_model.py`), charts (`plot_station.py`, `plot_people.py`, `plot_causes.py`, `plot_impacts.py`, `plot_method.py`, `plot_floor.py`).
 
@@ -521,3 +521,55 @@ Steps 4-7 are not committed to git yet.
 
 **Run:** `python method_data.py && python method_checker.py && python maintenance.py && python containment.py && python change_manager.py demo`
 Steps 4-8 are not committed to git yet.
+
+### Step 9 - 2026-09-26 - Agent (model 9) v1 - the copilot
+
+**What**
+
+1. `agent_tools.py`: 13 read-only tools over all the models:
+   - `morning_brief` (top problems, 7,500, current alerts, floor highlights);
+   - `list_incidents`, `explain_problem` (cause + evidence + what the floor said + impact + containment +
+     change record + maintenance, in one call);
+   - `signal_check` (is a drop real: flag rate in the window vs the rest of the week);
+   - `people_findings`, `impacts` (ranking, 7,500, biggest capacity losses), `floor_notes`;
+   - `method_check`, `check_proposal` (runs the checker and names the approvals needed, saves nothing);
+   - `change_status` (with the handover sheet), `containment_advice`, `maintenance_plan`;
+   - `run_sql` (single SELECT only, read-only connection).
+2. `agent.py`:
+   - Azure GPT-5 through the Responses API with strict function tools; up to 8 tool rounds per question;
+     parallel tool calls;
+   - follow-ups keep the conversation via `previous_response_id`;
+   - the answer comes with the tool trace, for "show your work" in the frontend.
+3. **Prompt:** the engineer's role and boundaries, taken from the job description. The answer shape is
+   answer / Why / Next. Facts only from tools, with IDs cited. It never approves, stops or releases
+   anything.
+4. **Demo safety:**
+   - answers are cached with their trace and replay without a key;
+   - if Azure fails, it falls back to the cache or an offline keyword router over the same tools;
+   - the cache key includes a fingerprint of the model results, so stale answers are not replayed after
+     re-running the models.
+5. CLI: `python agent.py "question"`, `--chat`, `--demo` (7 demo questions), `--trace`, `--offline`,
+   `--no-cache`. Log table: `agent_log`.
+
+**How - key decisions**
+
+- **Tools, not raw tables.** Each tool returns a small, clean JSON with IDs. The model can't
+  hallucinate joins, and the answers stay citable.
+- **One tool per question the engineer actually asks** (is it real? why? what first? stop? which cars?
+  will the change pass? how often to maintain?). `run_sql` is the escape hatch.
+- **Read-only by design.** Approvals and stops stay human (change manager gates, supervisor,
+  quality), exactly as the role describes.
+
+**Result**
+
+- The offline router answers all 7 demo questions from the tools. For example, "should we stop
+  ST012?" -> case 7 STOP, 327 cars to check, 1,357 held for a 68-car audit, the supervisor decides,
+  and the maintenance plan would cut the window to 8 h.
+- The Azure loop passed a local mock of the Responses API: request shape and strict tool schemas,
+  2 parallel tool calls then a third round, the chained conversation, a follow-up, a 429 retry,
+  fallback when Azure is unreachable, and replay from the cache with no key.
+- All 13 tools also run on pandas 3.0.
+
+**Next:** run `python agent.py --demo` with the key (fills `data/agent_cache.json` for a safe demo),
+then the frontend: Today / Investigate / Change / Capacity + the copilot panel.
+Steps 4-9 are not committed to git yet.

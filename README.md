@@ -4,7 +4,7 @@
 dashboard full of numbers, the engineer gets the few things that need a look, **why** they
 happened, and a sentence explaining it.
 
-This prototype uses 2 stations, 1 table per station, and 9 small models:
+This prototype uses 2 stations, 1 table per station, 9 small models, and an agent that uses them all:
 
 - **Signal checker:** what looks wrong in the data.
 - **People model:** what looks wrong in the human work.
@@ -16,6 +16,8 @@ This prototype uses 2 stations, 1 table per station, and 9 small models:
   always knows the current method.
 - **Containment:** which cars wait for a check, which move on, and whether to recommend a stop.
 - **Maintenance predictor:** how often each machine should be checked, and what is due next.
+- **Agent (copilot):** ask in plain words; GPT-5 answers from the models above (as tools) and shows
+  its work.
 
 See `PROGRESS.md` for what was built when, and the full roadmap (models 0-9).
 
@@ -40,6 +42,8 @@ python floor_listener.py       # floor listener   -> floor_facts table (Azure GP
 python maintenance.py          # maintenance predictor -> maint_plan, maint_history tables
 python containment.py          # containment      -> containment_cases, car_holds tables
 python change_manager.py demo  # change manager   -> changes, change_events (replay + example proposals)
+python agent.py --demo         # the copilot answers the 7 demo questions (Azure GPT-5, cached for the demo)
+python agent.py --chat         # ask your own questions, with follow-ups
 python plot_station.py && python plot_people.py && python plot_causes.py && python plot_impacts.py   # charts/
 python plot_method.py && python plot_floor.py
 ```
@@ -430,6 +434,51 @@ data is 2 years of fleet history (12 identical units per equipment type) plus ou
 - About 43% less maintenance and failure labour per year (in the model's cost units).
 - The costs and the true Weibull parameters are assumptions (constants in `MODES`).
 
+## Model 9 - agent (`agent.py`, `agent_tools.py`)
+
+The copilot. GPT-5 on Azure (Responses API, function calling) answers from 13 read-only tools that wrap
+the other models:
+
+- `morning_brief`, `list_incidents`, `explain_problem`, `signal_check` (is a drop real?);
+- `people_findings`, `impacts` (ranking + 7,500), `floor_notes`;
+- `method_check`, `check_proposal`, `change_status` (with the handover sheet);
+- `containment_advice`, `maintenance_plan`, `run_sql` (SELECT only).
+
+- **Rules in the prompt:**
+  - facts only from tools;
+  - cite IDs (incident #, case #, C-xx, rule IDs);
+  - short answers shaped as answer / Why / Next;
+  - keep the data apart from the notes;
+  - people findings are for support;
+  - never approve, stop or release anything - it names the gate or person who does.
+
+  The role boundaries come from the job description: supervisors stop the line, quality releases cars,
+  maintenance repairs, planning sets the schedule.
+- **Follow-ups** keep the conversation (`previous_response_id`). `ask()` returns the answer, the tool
+  trace, the backend and the time taken, ready for the frontend.
+- **Safe for a live demo:**
+  - every answer is cached with its tool trace (`data/agent_cache.json`) and replays with no key;
+  - if Azure fails, it answers from the cache or from an offline keyword router over the same tools;
+  - read-only database connection;
+  - questions and answers are logged in `agent_log`.
+
+**Demo questions** (`python agent.py --demo`):
+
+1. What should I look at first this morning?
+2. Was the torque shift on ST012 on Thursday night real, and why?
+3. Should we have stopped ST012, and which cars wait for a check?
+4. Would the checker have let WI-012 v4 through? Check `proposals/WI-013_v9.json`.
+5. Can we hit 7,500 next week, and what costs the most capacity?
+6. How often should we check the nutrunner, and what is due next?
+7. What did the shifts report that the data did not show?
+
+**Tested:**
+- The offline router answers all 7 questions.
+- The Azure loop was tested against a local mock of the Responses API: request shape, strict tool
+  schemas, parallel tool calls, the chained conversation, retry after a 429, fallback when Azure is
+  down, and replay from the cache.
+- A live GPT-5 run needs your key: run `python agent.py --demo`.
+
 ## Handy queries
 
 ```sql
@@ -499,6 +548,8 @@ FROM st013 s JOIN incidents i USING (incident_id) WHERE s.anomaly_flag = 1;
 | `change_manager.py` | Change manager: gates, approvals, pilot / release, after-check, replay, handover sheet |
 | `containment.py` | Containment: scope by genealogy, car-by-car disposition, stop / quarantine / roll-back advice |
 | `maintenance.py` | Maintenance predictor: fleet history, Weibull fit, check / replacement intervals, next due |
+| `agent.py` | The copilot: Azure GPT-5 with tools, conversation, cache / offline fallback, CLI |
+| `agent_tools.py` | The 13 read-only tools the agent uses (try them: `python agent_tools.py morning_brief`) |
 | `.env.example` | Azure settings template (copy to `.env`, which git ignores) |
 | `plot_station.py`, `plot_people.py`, `plot_causes.py`, `plot_impacts.py`, `plot_method.py`, `plot_floor.py` | Charts in `charts/` |
 | `data/injected_*.csv` | Answer keys from the simulator, used only for the evaluation printouts |
