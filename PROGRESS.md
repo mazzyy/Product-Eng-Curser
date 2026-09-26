@@ -13,9 +13,9 @@ bottom every time we work on the project, so you can see what was done at each p
 | 3 | Impact ranker | What matters most, bottleneck, 7,500? | **v1 built (step 4)**: formula + High/Medium/Low, next-week projection, bottleneck and 7,500 check, catalog of possible problems | `impact_ranker.py`, `plot_impacts.py` |
 | 4 | Floor listener | Handover notes -> structured data | **v1 built (step 6)**: Azure GPT-5 (strict JSON) + offline fallback; links notes to incidents (agrees / early warning / notes only / disputes) | `generate_notes.py`, `floor_listener.py`, `plot_floor.py` |
 | 5 | Method checker | Fits takt, safe, trained? | **v1 built (step 6)**: 15 fixed rules vs 50 s takt; history + proposals; 46/46 bad versions caught on 30 random weeks | `method_data.py`, `method_checker.py`, `plot_method.py`, `proposals/` |
-| 6 | Change manager | Versions, approval, rollout, after-check | Groundwork only (WI version per cycle) | - |
-| 7 | Containment | Which cars to hold, stop or not | Groundwork only (suspect cars flagged; incidents link to cars) | - |
-| 8 | Maintenance predictor | How often to check each machine | Not started (repairs + drift now in the data) | - |
+| 6 | Change manager | Versions, approval, rollout, after-check | **v1 built (step 8)**: gates check -> approve (by role) -> pilot -> release -> after-check; replay of the week; handover sheet | `change_manager.py` |
+| 7 | Containment | Which cars to hold, stop or not | **v1 built (step 8)**: scope by genealogy, car-by-car rework/check/hold/release, stop / quarantine / roll-back advice | `containment.py` |
+| 8 | Maintenance predictor | How often to check each machine | **v1 built (step 8)**: Weibull fit on fleet history, wear / silent / random policies, next due | `maintenance.py` |
 | 9 | Agent | Uses all the others as tools | Not started (database built to be agent-readable) | - |
 
 Also built: people model (`train_people_model.py`), charts (`plot_station.py`, `plot_people.py`, `plot_causes.py`, `plot_impacts.py`, `plot_method.py`, `plot_floor.py`).
@@ -420,3 +420,104 @@ Steps 4-6 are not committed to git yet.
 
 **Next:** re-run `python floor_listener.py --misses` to measure prompt v2 (about 45 s, 31 Azure calls).
 Steps 4-7 are not committed to git yet.
+
+### Step 8 - 2026-09-26 - Change manager (6), containment (7), maintenance predictor (8) v1
+
+**Why:** these are the three parts of the engineer's job that were still missing:
+- approve a change before the line uses it, so the next shift has the current method;
+- decide whether a product waits for a check or moves on, and recommend a stop;
+- set how often machines are checked.
+
+**What - model 6, change manager** (`change_manager.py`)
+
+- States: DRAFT -> CHECKED -> APPROVED -> PILOT (one crew, one shift) -> RELEASED -> after-check ->
+  CLOSED, or BLOCKED / ROLLED BACK.
+- Gates:
+  - the method checker (BLOCK stops the change; WARN needs a written reason);
+  - approvals by role (engineer always, quality for critical / check / scan / control-plan steps,
+    supervisor for operator work or training);
+  - the pilot needs the crew's sign-offs; the release needs the whole rotation's;
+  - the after-check on the first shift: cycle vs takt, hands-on vs plan, incidents blamed on it.
+- `replay` runs the week's real WI changes through the gates. The handover sheet shows the current
+  method per station, what is next, who must sign, and alerts.
+- Tables: `changes`, `change_events`.
+
+**What - model 7, containment** (`containment.py`)
+
+- Per case, at detection time, it finds the cars in scope by genealogy:
+  - machine drift: back to the last good check;
+  - bad batch: every car with that batch;
+  - WI version: every car built with it;
+  - people: the operator's cars in the affected shifts;
+  - data: cars with no record, with the VIN inferred.
+- Each car gets REWORK / CHECK / HOLD (for a 1-in-20 audit) / RELEASE, plus whether it is in the plant
+  or already shipped.
+- Advice: STOP / QUARANTINE BATCH / ROLL BACK / FIX WI / 100% CHECK / MANUAL RECORD / SUPPORT / NO HOLD.
+- Tables: `containment_cases`, `car_holds`.
+
+**What - model 8, maintenance predictor** (`maintenance.py`)
+
+- 8 failure modes (4 per station). The history covers 2 years for 12 identical units of each type
+  (fleet data) plus the demo week's repairs.
+- Weibull maximum-likelihood fit that allows for machines still running and machines already old
+  when the history starts.
+- Policies:
+  - wear: lowest cost per hour;
+  - silent drift: `I* = sqrt(2 x check cost / (drift rate x cars/h x re-check cost))`, capped at one
+    shift for severity 9;
+  - random: no interval.
+- Output per mode: next due date, and the chance of failure in the next 7 days.
+- Tables: `maint_plan`, `maint_history`.
+
+**How - key decisions**
+
+- **The models feed each other:**
+  - the change manager uses the method checker as its "check" gate, and the cause finder in its
+    after-check;
+  - containment's advice for a WI problem is a roll-back through the change manager;
+  - for a silent drift, containment shows what the maintenance plan's interval would do to the window.
+- **The replay proves the value on the demo week:** v4 and v8 would have stopped at the check. Even
+  without the checker, the pilot's after-check would have rolled them back after one shift, avoiding
+  75-80% of the damage.
+- **"Back to the last good check"** is how real containment scopes a drifting tool. It is also why the
+  check interval matters: the window equals the interval.
+- **The engineer recommends, others decide:** stops are the supervisor's decision and releases of held
+  cars are quality's. The output says so.
+- **Fixed in `method_data.py`:** each WI version now builds on the one before. Before, a "photos and
+  wording" version silently dropped the audit step from the fix before it. The method checker is
+  unchanged: 2 BLOCK / 5 PASS, and still 46/46 bad versions caught with 0 false alarms on 30 random
+  weeks.
+
+**Result (demo week)**
+
+- **Change manager:**
+  - WI-012 v4 and WI-013 v8 stop at the check. In reality they ran 32 h (252 lost cars) and 40 h
+    (185 cars to check).
+  - Proposal v7 is approved and released after the sign-offs; v9 is blocked.
+  - The handover sheet raises an alert: ST013 is still on v8, which fails the check.
+- **Containment:**
+  - NR-012 drift -> STOP ST012: 1,696 cars in scope going back 27 h, 327 to check, 1,357 held for a
+    68-car audit. With every-shift checks the window would be at most 8 h.
+  - BL-4471 -> quarantine the batch, 510 cars to check.
+  - CF-013 -> 100% check at ST013.
+  - MES -> check 79 cars.
+  - WI-013 v8 -> fix the WI.
+  - People -> support. Speed problems -> no hold.
+- **Maintenance:**
+  - The fitted shapes are within 0.2 of the true ones.
+  - Replace the socket and the seal weekly; check both calibrations every shift (window 24 h -> 8 h).
+  - Service the clamp and the pump monthly; the pump is overdue.
+  - About 43% less maintenance + failure labour per year in the model's cost units.
+- **Tested on:** pandas 2.3 and 3.0, same results. `scipy` was added to `requirements.txt` (sklearn
+  already needs it).
+
+**Limits / next ideas**
+
+- The costs, the true Weibull parameters and the containment thresholds are assumptions. They are
+  constants at the top of each file.
+- Containment has no real shipping data: a car counts as "shipped" 24 h after its last station.
+- The change manager keeps its own simulated clock: proposals roll out on 22.09.
+- **Next:** the brief builder and the frontend (Today / Investigate / Change / Capacity).
+
+**Run:** `python method_data.py && python method_checker.py && python maintenance.py && python containment.py && python change_manager.py demo`
+Steps 4-8 are not committed to git yet.

@@ -178,6 +178,7 @@ def build(tables: dict, causes: pd.DataFrame, seed: int = 7) -> dict:
     wis, steps, bad_versions = [], [], {}
     for sid, g in spans.groupby("station"):
         g = g.sort_values("version_no").reset_index(drop=True)
+        prev, good = None, None           # each version builds on the one before; `good` = last version without a problem
         for i, r in g.iterrows():
             valid_from = week_start - timedelta(days=30) if i == 0 else r.first_cycle.floor("min")
             valid_to = g.first_cycle[i + 1].floor("min") if i + 1 < len(g) else None
@@ -185,25 +186,28 @@ def build(tables: dict, causes: pd.DataFrame, seed: int = 7) -> dict:
             here = meth[meth.stations.str.contains(sid) & (meth.start <= valid_from + timedelta(minutes=5))
                         & (meth.end > valid_from + timedelta(minutes=5))]
             ended = meth[meth.stations.str.contains(sid) & ((meth.end - valid_from).abs() <= timedelta(minutes=10))]
-            s = base_steps(sid)
             if i == 0:
-                note = "Baseline"
+                s, note = base_steps(sid), "Baseline"
             elif len(here):
+                s = prev
                 for fam in here.family:
                     s = apply_changes(s, bad_changes(sid, fam))
                 note = "; ".join(BAD_NOTE[f] for f in here.family)
                 bad_versions[r.wi_version] = ",".join(here.family)
             elif len(ended) and (ended.family == "speed").any():
-                s = apply_changes(s, [{"op": "add", "after": "verify", "step": audit_step(sid)}])
+                s = apply_changes(good, [{"op": "add", "after": "verify", "step": audit_step(sid)}])
                 note = "Fix: every-car check replaced by a 1-in-20 team-lead audit"
             elif len(ended):
-                note = "Fix: back to the previous sequence"
+                s, note = apply_changes(good, []), "Fix: back to the previous sequence"
             else:
                 key = "position" if sid == "st012" else "connect"
-                text = next(x["text"] for x in s if x["key"] == key)
-                s = apply_changes(s, [{"op": "edit", "key": key, "set": {"text": text + " (new photo)"}}])
+                text = next(x["text"] for x in BASE_STEPS[sid] if x["key"] == key)
+                s = apply_changes(prev, [{"op": "edit", "key": key, "set": {"text": text + " (new photo)"}}])
                 note = "Updated photos and wording"
             s = apply_changes(s, [])
+            if r.wi_version not in bad_versions:
+                good = s
+            prev = s
             wis.append({"wi_version": r.wi_version, "station": sid, "version_no": int(r.version_no),
                         "valid_from": valid_from, "valid_to": valid_to, "change_note": note, "author": AUTHOR})
             steps += [{"wi_version": r.wi_version, "station": sid, **x} for x in s]

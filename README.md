@@ -4,7 +4,7 @@
 dashboard full of numbers, the engineer gets the few things that need a look, **why** they
 happened, and a sentence explaining it.
 
-This prototype uses 2 stations, 1 table per station, and 6 small models:
+This prototype uses 2 stations, 1 table per station, and 9 small models:
 
 - **Signal checker:** what looks wrong in the data.
 - **People model:** what looks wrong in the human work.
@@ -12,6 +12,10 @@ This prototype uses 2 stations, 1 table per station, and 6 small models:
 - **Impact ranker:** what matters most - High, Medium or Low - and can we hit 7,500 cars a week.
 - **Floor listener:** what the shift notes and supervisors say, as structured facts (LLM: Azure GPT-5).
 - **Method checker:** does a work instruction fit the 50 s takt, is it safe, are people trained.
+- **Change manager:** no change reaches the line without a check and an approval; the next shift
+  always knows the current method.
+- **Containment:** which cars wait for a check, which move on, and whether to recommend a stop.
+- **Maintenance predictor:** how often each machine should be checked, and what is due next.
 
 See `PROGRESS.md` for what was built when, and the full roadmap (models 0-9).
 
@@ -33,6 +37,9 @@ python method_checker.py       # method checker   -> method_checks, method_verdi
 python method_checker.py --propose proposals/*.json   # check new versions before rollout
 python generate_notes.py       # shift notes + supervisor answers -> floor_notes table
 python floor_listener.py       # floor listener   -> floor_facts table (Azure GPT-5, or offline rules)
+python maintenance.py          # maintenance predictor -> maint_plan, maint_history tables
+python containment.py          # containment      -> containment_cases, car_holds tables
+python change_manager.py demo  # change manager   -> changes, change_events (replay + example proposals)
 python plot_station.py && python plot_people.py && python plot_causes.py && python plot_impacts.py   # charts/
 python plot_method.py && python plot_floor.py
 ```
@@ -49,6 +56,8 @@ python plot_method.py && python plot_floor.py
 - **Method tables:** `work_instructions`, `wi_steps`, `qualifications`, `wi_signoffs` (input) and
   `method_checks`, `method_verdicts`, `method_eval` (output).
 - **Floor tables:** `floor_notes` (free text) and `floor_facts` (what the listener extracted).
+- **Change tables:** `changes`, `change_events`. **Containment:** `containment_cases`, `car_holds`.
+  **Maintenance:** `maint_plan`, `maint_history`.
 
 | Column group | Columns |
 |---|---|
@@ -337,6 +346,90 @@ every past version in the database: what the checker would have said, and what h
   This shows that the rules fire when they should and stay quiet otherwise. It does not prove they
   would catch real problems they were not written for.
 
+## Model 6 - change manager (`change_manager.py`)
+
+No work-instruction change reaches the line without a check and an approval, and the next shift always
+knows the current method.
+
+`DRAFT -> CHECKED -> APPROVED -> PILOT (one crew, one shift) -> RELEASED -> after-check -> CLOSED`,
+or `BLOCKED` (the checker said BLOCK) or `ROLLED BACK` (the after-check failed).
+
+| Gate | Rule |
+|---|---|
+| check | runs the method checker; BLOCK stops the change here; WARN needs a written reason |
+| approve | engineer always; quality when a critical step, result check, VIN scan or control-plan step changes; supervisor when operators' work or qualifications change |
+| pilot | one crew for one shift, only when every operator of that crew has signed |
+| release | all crews, only after the pilot shift and when the whole rotation has signed |
+| after-check | first shift on the new version: median cycle within takt, hands-on within 8 % of plan, no incident blamed on it |
+
+**Result (`python change_manager.py demo`):**
+
+- **Replay of the week's 5 real WI changes:**
+  - WI-012 v4 stops at the check. In reality it ran 32 h and cost 252 cars. Even without the check,
+    the pilot's after-check would have rolled it back after 8 h (52.2 s > takt; incident #4).
+  - WI-013 v8 stops at the check (2 VIN scans). In reality it ran 40 h, leaving 185 cars to check.
+  - The other 3 versions pass, and their after-checks are OK.
+- **Proposals:**
+  - WI-012 v7 needs engineer and supervisor approval. The pilot and the release are both refused
+    until the operators have signed; then it is released.
+  - WI-013 v9 is blocked, and its approval is refused.
+- **Handover sheet:** ST013 is still running WI-013 v8, so the sheet raises an alert: "fails the method
+  check - roll back to v7". v9 is marked "not for use".
+
+## Model 7 - containment (`containment.py`)
+
+For each problem case, at the moment the cause finder would have found it:
+
+1. **Scope by genealogy.** Which cars count depends on the cause:
+   - machine drift: every car back to the machine's last good check;
+   - bad batch: every car with that part batch;
+   - method: every car on that WI version;
+   - people: that operator's cars in the affected shifts;
+   - data: cars with no VIN or no upstream record. The VIN is inferred from its neighbour.
+2. **Sort each car:**
+   - REWORK: rejected, or out of spec;
+   - CHECK: re-hits, flagged by the signal checker, more than half its tolerance used, or a bad batch
+     on a safety-critical joint;
+   - HOLD: waits for a 1-in-20 audit;
+   - RELEASE.
+
+   The report also says whether each car is still in the plant or already shipped.
+3. **Advise** one of: STOP, QUARANTINE BATCH, ROLL BACK / FIX WI, 100% CHECK, MANUAL RECORD, SUPPORT
+   or NO HOLD. The engineer recommends; the supervisor decides a stop; quality releases held cars.
+
+**Result (demo week):**
+
+- **NR-012 drift → STOP ST012.** 28% of cars in the last 2 h are suspect on a safety-critical joint.
+  The scope is 1,696 cars, going back 27 h to the last good check: 327 to check, 1,357 held for a
+  68-car audit. With the maintenance plan's every-shift check, this window would be at most 8 h.
+- **BL-4471 → quarantine the batch.** 510 cars need their bolts checked; no line stop is needed.
+- **CF-013 seal → 100% check at ST013.** 149 cars to check.
+- **MES outage → check 79 cars** with no record.
+- **WI-013 v8 → fix the WI.** The double scans only affect the count; 8 cars have no VIN.
+- **People cases → support, no stop.**
+- **Speed problems → no hold** (no product risk).
+
+## Model 8 - maintenance predictor (`maintenance.py`)
+
+Each of the 8 failure modes gets a policy based on a Weibull life model. The model is fitted by maximum
+likelihood, allowing for machines still running and machines already old when the history starts. The
+data is 2 years of fleet history (12 identical units per equipment type) plus our own unit's demo week.
+
+- **wear** (socket, seal, clamp, pump): planned replacement at the interval with the lowest cost per hour.
+- **silent** (torque calibration, leak tester): check interval `I* = sqrt(2 x check cost / (drift rate x cars/h x re-check cost))`,
+  capped at one shift on a severity-9 joint. The interval is also the containment window.
+- **random** (VIN scanners, shape ~1): no fixed interval; keep a spare and let the signal checker watch it.
+
+**Result:**
+
+- The fitted shapes match the simulator's true ones (2.7 vs 2.8, 1.9 vs 1.8, 3.1 vs 3.2, ...).
+- Replace the NR-012 socket and the CF-013 seal weekly. Check both calibrations every shift instead
+  of daily, which cuts the worst-case containment window from 24 h (1,728 cars) to 8 h (576 cars).
+- Service the clamp and the pump monthly; the pump is overdue and goes into the next maintenance
+  window.
+- About 43% less maintenance and failure labour per year (in the model's cost units).
+- The costs and the true Weibull parameters are assumptions (constants in `MODES`).
+
 ## Handy queries
 
 ```sql
@@ -363,6 +456,16 @@ SELECT wi_version, source, verdict, planned_cycle_s, headline FROM method_verdic
 -- what the floor said that the data did not see
 SELECT shift_date, shift, station, category, subject, quote FROM floor_facts
 WHERE link IN ('early warning', 'notes only', 'disputes');
+
+-- which cars wait for a check, and the advice per case
+SELECT case_id, culprit, action, cars_in_scope, "check", hold, why FROM containment_cases;
+SELECT * FROM car_holds WHERE case_id = 7 AND disposition = 'CHECK';
+
+-- how often to check each machine
+SELECT equipment, failure_mode, policy_now, policy_rec, next_due, p_fail_7d FROM maint_plan;
+
+-- change history and where each change stopped
+SELECT change_id, wi_version, state, verdict, needs, outcome FROM changes;
 
 -- signal-checker flags that the cause finder could explain
 SELECT s.ts, s.anomaly_reason, i.cause, i.culprit
@@ -393,6 +496,9 @@ FROM st013 s JOIN incidents i USING (incident_id) WHERE s.anomaly_flag = 1;
 | `proposals/*.json` | Example WI change proposals |
 | `generate_notes.py` | Shift notes, maintenance log and supervisor answers + their answer key |
 | `floor_listener.py` | Floor listener: Azure GPT-5 or offline parser, links to incidents, scoring |
+| `change_manager.py` | Change manager: gates, approvals, pilot / release, after-check, replay, handover sheet |
+| `containment.py` | Containment: scope by genealogy, car-by-car disposition, stop / quarantine / roll-back advice |
+| `maintenance.py` | Maintenance predictor: fleet history, Weibull fit, check / replacement intervals, next due |
 | `.env.example` | Azure settings template (copy to `.env`, which git ignores) |
 | `plot_station.py`, `plot_people.py`, `plot_causes.py`, `plot_impacts.py`, `plot_method.py`, `plot_floor.py` | Charts in `charts/` |
 | `data/injected_*.csv` | Answer keys from the simulator, used only for the evaluation printouts |
