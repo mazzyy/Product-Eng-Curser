@@ -179,5 +179,20 @@
   ],
   "backend": "azure",
   "response_id": "resp_02ccd2bcdf9b299d006ab746daa18c8193b32667b1fc2ed094"
+ },
+ "3ee2efb1a2393ad3d0b8c8b4": {
+  "answer": "Real, machine issue: NR-012 torque calibration drifted; maintenance recalibrated Thu 17.09 08:30 and signal returned to normal.\n\nWhy:\n- Case 7, incidents #13 (16–17.09 C shift) and #15 (17.09 A shift): torque shifted +1.3 to +1.9σ, hits all operators, ends after “Nutrunner recalibrated” at 08:30 (explain_problem case 7).\n- Floor notes agree: “values drifting… more re-hits… ticket open” and “recalibrated… Found: torque calibration drifting” (notes #14–17).\n- Impact rank: High, priority 64.1; “safety-critical signal used 46% of its safety margin”; estimated lost cars 32.7 (impact in case 7).\n- Containment model flagged STOP during window 16.09 05:45–17.09 08:30; cars in scope 1,696; hold/check/rework counts provided (containment in case 7).\n\nNext:\n- Quality: apply the containment for the window (hold 1,357; check 327; rework 12; audit 68) and release per results.\n- Maintenance: enforce “torque calibration check every shift”; next due 2026-09-21 14:00; add weekly socket replacement (maintenance plan in case 7).\n- Supervisor: confirm checks are on the shift checklist and that NR-012 remains stable post-recalibration.",
+  "trace": [
+   {
+    "tool": "explain_problem",
+    "args": {
+     "incident_id": null,
+     "case_id": 7
+    },
+    "result": "{\"case_id\": 7, \"culprit\": \"Nutrunner NR-012\", \"cause\": \"machine\", \"first\": \"2026-09-17 02:00:00\", \"last\": \"2026-09-17 10:00:00\", \"incidents\": [{\"incident_id\"..."
+   }
+  ],
+  "backend": "azure",
+  "response_id": "resp_0acde100b89928f1006ab77a0dccc88196b866d323d78e054a"
  }
 }
