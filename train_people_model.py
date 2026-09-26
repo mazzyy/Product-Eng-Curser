@@ -313,6 +313,18 @@ def main():
         if "operator_time_s" not in df:
             raise SystemExit(f"{t} has no human-cycle columns - run generate_data.py again")
         frames.append(df[df.event_type == "CYCLE"].assign(station=t))
+    cyc, shifts, bundles = run_people(frames, args.contamination)
+    MODELS_DIR.mkdir(exist_ok=True)
+    for t, bundle in bundles.items():
+        joblib.dump(bundle, MODELS_DIR / f"people_{t}.joblib")
+    write_back(con, tables, cyc, shifts)
+    report(cyc, shifts, tables, t0)
+
+
+def run_people(frames: list, contamination: float = 0.005):
+    """Both levels of the people model on station cycles (the database or a live stream).
+    frames: one DataFrame of CYCLE rows per station, with a 'station' column. -> (cyc, shifts, bundles)"""
+    tables = sorted({f.station.iloc[0] for f in frames if len(f)})
     cyc = pd.concat(frames, ignore_index=True)
     cyc = add_shift_clock(cyc[cyc.operator_id.notna()].copy())
     cyc["key"] = cyc.station + ":" + cyc.event_id.astype(str)
@@ -324,16 +336,16 @@ def main():
     cyc["human_score"], cyc["human_type"], cyc["human_reason"] = np.nan, None, None
     cyc["pace"], cyc["technique_z"] = np.nan, np.nan
 
-    MODELS_DIR.mkdir(exist_ok=True)
+    bundles = {}
     for t in tables:
         m = cyc.station == t
-        score, reasons, pace, bundle = cycle_model(cyc[m], t, args.contamination)
+        score, reasons, pace, bundle = cycle_model(cyc[m], t, contamination)
         cyc.loc[m, "human_score"] = score.round(4)
         cyc.loc[m, "pace"] = pace
         cyc.loc[m, "technique_z"] = technique_offsets(cyc[m])
         for ix, (kind, text) in reasons.items():
             cyc.at[ix, "human_type"], cyc.at[ix, "human_reason"] = kind, text
-        joblib.dump(bundle, MODELS_DIR / f"people_{t}.joblib")
+        bundles[t] = bundle
 
     late = (cyc.andon_pulled == 1) & (cyc.andon_response_s > ANDON_SLA_S)
     for ix in cyc.index[late]:
@@ -346,7 +358,10 @@ def main():
     rule_rows = cyc.human_type.isin(["support", "login", "working_time"])
     cyc.loc[rule_rows, "human_score"] = 1.0
     cyc["human_flag"] = cyc.human_type.notna().astype(int)
+    return cyc, operator_shifts(cyc), bundles
 
+
+def write_back(con, tables, cyc, shifts):
     # write level 1 back into each station table (non-cycle rows get NULL)
     for t in tables:
         g = cyc[cyc.station == t]
@@ -357,12 +372,13 @@ def main():
              g[["human_score", "human_flag", "human_type", "human_reason", "event_id"]].itertuples(index=False)])
 
     # level 2: one row per operator per shift
-    shifts = operator_shifts(cyc)
     con.executescript(OPERATOR_SHIFTS_SQL)
     shifts.to_sql("operator_shifts", con, if_exists="append", index=False)
     con.commit()
     con.close()
 
+
+def report(cyc, shifts, tables, t0):
     print(f"people model: {len(cyc):,} operator cycles, {len(shifts)} operator-shifts, "
           f"{cyc.operator_id.nunique()} operators - done in {time.time() - t0:.1f}s")
     for t in tables:

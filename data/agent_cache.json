@@ -128,5 +128,56 @@
   ],
   "backend": "azure",
   "response_id": "resp_0bf1dfff0af1e16f006ab72c0713a48194a473709d482b1182"
+ },
+ "4ec0933f3a60bc338e935cd3": {
+  "answer": "Rank-5 because WI-012 v4 over-takted ST012, costing ~252 cars; it’s already fixed by removing the extra check (v5), cycles back under takt.\n\nWhy:\n- Impact list rank 5, case #4: “WI-012 v4 - cycles slower,” 251.7 lost cars, status fixed (impacts).\n- Method check on WI-012 v4: BLOCK on TIME-1 (52.4 s > 50 s), SAF-4 (manual 120 Nm re-check every car), TRN-1 gaps (OP-A4, OP-B2, OP-B3) (rules TIME-1, SAF-4, TRN-1).\n- Incidents #4/#5/#8/#9: hands-on 36–38 s vs 30 s; across A/B/C crews; started exactly when v4 went live; cause finder: method (explain_problem case #4).\n- Floor notes agree: “new check step … behind all shift”; “v5 live since 14:00, extra check gone -> back on pace.” Signal check after 09-16 14:00: median 47.7 s (<= takt), recovery real (signal_check).\n\nNext:\n- Methods gate: confirm WI-012 v5 is approved vs TIME/SAFETY/TRAINING; Quality/Safety sign-off on audit frequency (1-in-20).\n- Training: close TRN-1 for OP-A4, OP-B2, OP-B3 before shifts run v5.\n- Today: monitor ST012 cycle and flags; if flags persist, Engineering to fine-tune audit step. No product hold (containment: NO HOLD, case #4).",
+  "trace": [
+   {
+    "tool": "impacts",
+    "args": {
+     "category": null,
+     "top": 10
+    },
+    "result": "{\"capacity_check\": {\"week\": \"2026-09-14 06:00 to 2026-09-21 05:44\", \"target_per_week\": \"7500\", \"cars_built\": \"11241\", \"attainment\": \"150%\", \"bottleneck\": \"st..."
+   },
+   {
+    "tool": "method_check",
+    "args": {
+     "wi_version": "WI-012 v4"
+    },
+    "result": "{\"verdict\": [{\"wi_version\": \"WI-012 v4\", \"station\": \"st012\", \"source\": \"history\", \"valid_from\": \"2026-09-15 06:00:00\", \"change_note\": \"Added a manual check o..."
+   },
+   {
+    "tool": "explain_problem",
+    "args": {
+     "incident_id": null,
+     "case_id": 4
+    },
+    "result": "{\"case_id\": 4, \"culprit\": \"WI-012 v4\", \"cause\": \"method\", \"first\": \"2026-09-15 06:00:00\", \"last\": \"2026-09-16 14:00:00\", \"incidents\": [{\"incident_id\": 4, \"sh..."
+   },
+   {
+    "tool": "signal_check",
+    "args": {
+     "station": "st012",
+     "start": "2026-09-16 14:00",
+     "end": "2026-09-17 06:00"
+    },
+    "result": "{\"station\": \"st012\", \"window\": [\"2026-09-16 14:00\", \"2026-09-17 06:00\"], \"window_kpis\": {\"cycles\": 1007, \"median_cycle_s\": 47.7, \"retries_per_car\": 0.127, \"n..."
+   }
+  ],
+  "backend": "azure",
+  "response_id": "resp_02ccd2bcdf9b299d006ab7455323a481939224b769b74bf06a"
+ },
+ "d675e9febd83ba277902121e": {
+  "answer": "First: lock down ST013 method/data: roll back WI-013 v8 and clear the VIN genealogy risk; then work the held-car queue with Quality.\n\nWhy:\n- Alerts: WI-013 v8 fails method check (TRC-1: double VIN scans per car), WI-013 v9 is blocked; instruction is to roll back to v7 or fix (morning_brief alerts).\n- Impact list rank 3, case #10 “WI-013 v8 - VIN records missing/double” is active; 2,588 cars are waiting for check across cases [1,2,3,5,7,9,10] (morning_brief).\n- ST013 equipment risk: CF-013 fill pump service overdue (due 2026-09-22 05:45); LT-013 leak tester drift 16% failure risk in 7 days (alerts).\n- Safety notes open: coolant puddle at ST013; ST012 light curtain flicker (floor highlights).\n\nNext:\n- Change manager/IT: switch ST013 to WI-013 v7 now; fix v8 per TRC-1 before reuse; Quality to validate genealogy windows (case #10).\n- Quality: prioritize release of the 2,588 held cars by case list; coordinate rescans for case #5 (MES/network).\n- Maintenance planner: schedule CF-013 service for 09-22; check LT-013 drift today; verify ST012 light curtain.\n- Shift lead: ensure andon TL coverage (rank-4 recurring). Monitor NR-012 but issue is marked fixed (case #7).",
+  "trace": [
+   {
+    "tool": "morning_brief",
+    "args": {},
+    "result": "{\"week\": {\"week\": \"2026-09-14 06:00 to 2026-09-21 05:44\", \"target_per_week\": \"7500\", \"cars_built\": \"11241\", \"attainment\": \"150%\", \"capacity\": \"11881\", \"bottl..."
+   }
+  ],
+  "backend": "azure",
+  "response_id": "resp_02ccd2bcdf9b299d006ab746daa18c8193b32667b1fc2ed094"
  }
 }

@@ -147,15 +147,37 @@ class Writer:
 
 
 def main():
-    rng = np.random.default_rng(SEED)
-    w = Writer(rng)
     con = connect()
     causes = pd.read_csv(CAUSES_PATH)
+    frames = {sid: pd.read_sql(f"SELECT ts, event_type, comment, downtime_s, work_instruction FROM {sid}", con)
+              for sid in station_tables(con)}
+    try:
+        inc = pd.read_sql("SELECT * FROM incidents ORDER BY incident_id", con)
+    except Exception:
+        inc = pd.DataFrame()
+    rows, truth = build(causes, frames, inc)
+    pd.DataFrame(rows).to_sql("floor_notes", con, if_exists="replace", index=False)
+    con.commit()
+    con.close()
+    truth.to_csv(NOTES_TRUTH_PATH, index=False)
+    kinds = pd.Series([r["kind"] for r in rows]).value_counts().to_dict()
+    print(f"floor_notes: {len(rows)} notes {kinds}; {len(truth)} facts in the answer key -> {NOTES_TRUTH_PATH.name}")
+    print("facts by category:", truth.category.value_counts().to_dict())
+
+
+def build(causes: pd.DataFrame, frames: dict, inc: pd.DataFrame | None = None, seed: int = SEED):
+    """All notes of a simulated week (the database or a live stream).
+    frames: {station: DataFrame with ts, event_type, comment, downtime_s, work_instruction}.
+    -> (note rows, answer key DataFrame). With no incidents, there are no supervisor answers."""
+    rng = np.random.default_rng(seed)
+    w = Writer(rng)
+    causes = causes.copy()
     for c in ("start", "end"):
         causes[c] = pd.to_datetime(causes[c])
+    inc = pd.DataFrame() if inc is None else inc
     ev, versions = [], []
-    for sid in station_tables(con):
-        df = pd.read_sql(f"SELECT ts, event_type, comment, downtime_s, work_instruction FROM {sid}", con)
+    for sid, df in frames.items():
+        df = df.copy()
         df["ts"] = pd.to_datetime(df.ts)
         e = df[df.comment.fillna("").str.startswith("Unplanned repair")].copy()
         e["station"] = sid
@@ -166,10 +188,6 @@ def main():
     repairs = pd.concat(ev)
     versions = pd.concat(versions).sort_values("ts")
     week_start, week_end = versions.ts.min().floor("D") + timedelta(hours=6), versions.ts.min().floor("D") + timedelta(days=7, hours=6)
-    try:
-        inc = pd.read_sql("SELECT * FROM incidents ORDER BY incident_id", con)
-    except Exception:
-        inc = pd.DataFrame()
 
     facts = {}          # (date, shift) -> list of facts
 
@@ -329,14 +347,7 @@ def main():
                           # a second reading that is also right, where the label is honestly ambiguous
                           "alt_station": alt.get("station"), "alt_category": alt.get("category"),
                           "alt_status": alt.get("status")})
-    pd.DataFrame(rows).to_sql("floor_notes", con, if_exists="replace", index=False)
-    con.commit()
-    con.close()
-    truth = pd.DataFrame(truth)
-    truth.to_csv(NOTES_TRUTH_PATH, index=False)
-    kinds = pd.Series([r["kind"] for r in rows]).value_counts().to_dict()
-    print(f"floor_notes: {len(rows)} notes {kinds}; {len(truth)} facts in the answer key -> {NOTES_TRUTH_PATH.name}")
-    print("facts by category:", truth.category.value_counts().to_dict())
+    return rows, pd.DataFrame(truth)
 
 
 def answers(inc: pd.DataFrame, causes: pd.DataFrame, rng, w: Writer) -> list[dict]:

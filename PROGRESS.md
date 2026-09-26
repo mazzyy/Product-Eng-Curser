@@ -18,7 +18,7 @@ bottom every time we work on the project, so you can see what was done at each p
 | 8 | Maintenance predictor | How often to check each machine | **v1 built (step 8)**: Weibull fit on fleet history, wear / silent / random policies, next due | `maintenance.py` |
 | 9 | Agent | Uses all the others as tools | **v1 built (step 9)**: Azure GPT-5 with 13 read-only tools, cited answers, follow-ups, cache + offline fallback | `agent.py`, `agent_tools.py` |
 
-Also built: **the app** (`app.py` + `frontend/`, step 10), people model (`train_people_model.py`), charts (`plot_station.py`, `plot_people.py`, `plot_causes.py`, `plot_impacts.py`, `plot_method.py`, `plot_floor.py`).
+Also built: **the app** (`app.py` + `frontend/`, step 10), **the live line + workflow diagram** (`live.py`, step 11), people model (`train_people_model.py`), charts (`plot_station.py`, `plot_people.py`, `plot_causes.py`, `plot_impacts.py`, `plot_method.py`, `plot_floor.py`).
 
 Plan for the rest: [System design for the remaining models](https://claude.ai/code/artifact/1c103c0d-14c3-49d5-ba62-1e113bc3e8df) (step 5).
 
@@ -632,3 +632,62 @@ Steps 4-10 are not committed to git yet.
   - it says to keep the window open; `--port` and `--no-browser` options were added.
 - **Change to the frontend:** the KPI count-up now also finishes when the tab is in the background.
 
+### Step 11 - 2026-09-26 - Workflow diagram + live line (all models on streaming data)
+
+**What**
+
+- **Workflow diagram** (`frontend/js/diagram.js`, new page **How it works**, key `9`):
+  - five layers: the line -> detect -> understand -> decide & act -> the engineer; the 9 models plus
+    the people model, the copilot and the feedback loop (released WI -> next shift's method);
+  - every box shows what it produced this week (`GET /api/flow`); click a box for input, output,
+    when it runs and a link to its page;
+  - "Trace a problem": six animated walk-throughs (nutrunner drift, bad WI change, tired operator,
+    the floor says it first, check interval, a copilot question);
+  - PNG export in the current theme; `charts/workflow.png` (light) and `charts/workflow-dark.png`.
+- **Live line** (`live.py`, new page **Live line**, key `8`):
+  - the simulator builds a week (the demo story or a random seed) in memory; a clock releases it car
+    by car; every model runs when it would on a real line (every car / 2-hour block / shift end /
+    note written / before a WI goes live / repair); nothing is written to the database;
+  - page: control bar (demo or random week, 4 speeds, pause, stop, restart, progress with event
+    ticks), 6 live KPIs, two streaming station charts (canvas: key signal, spec limits, flagged cars,
+    rejects, rolling median, cycle time vs takt), the event feed, the workflow diagram with packets
+    and pulses, and the problem cases decided live (action, priority, cars to check / on hold, "floor
+    first" badge, details on click);
+  - `POST /api/live/start`, `POST /api/live/control`, `GET /api/live/state?ev=&pt=` (only new events
+    and points);
+  - `python live.py --fast` runs a whole week without waiting and scores it.
+- **Refactors** so the models run on data in memory (database outputs checked identical row by row):
+  `find_causes.find()`, `train_people_model.run_people()` / `write_back()` / `report()`,
+  `generate_notes.build()`, `containment.prepare()`. The action labels moved into `containment.py`.
+
+**How - key decisions**
+
+- **No peeking:** the signal checker uses a trailing window; the cause finder only sees the blocks so
+  far; containment decides at the moment the cause is confirmed. That is why live detection is slower
+  than the batch run - "follows the person after rotation" or "stops after the repair" only exists
+  once it has happened.
+- **Act only on a stable cause:** it must hold for 2 passes in a row (>= 60%), or be >= 85% sure.
+  A WI that ran for weeks is not blamed unless the finder is sure (the WI system knows its age).
+  A confirmed case that disappears for 3 passes while still recent is shown as "revised".
+- **Few, meaningful alerts:** flagged cars are grouped into bursts (6 in an hour, then 3 h quiet);
+  escalations and fixes are announced once; toasts only for critical and rate-limited serious events.
+- **Floor listener in live mode** uses saved GPT-5 answers when the note was already parsed (all 24
+  demo-week notes are), live Azure calls when a key is set, the offline rules otherwise.
+
+**Results** (`python live.py --fast`)
+
+| Week | Planted problems confirmed live | Median hours after the problem started | Other cases |
+|---|---|---|---|
+| demo (seed 7) | 10 of 11 (not: supply gap) | 13 | 1 (revised 6 h later) |
+| random seed 21 | 5 of 6 | 11 | 2 |
+| random seed 5 | 5 of 6 | 17.5 | 3 |
+
+Same results on your Mac (pandas 2.3.3), where `--fast` runs the whole week through all models in 51 s
+and one cause-finder pass takes about 0.5 s - so even at 1 h = ½ s the analysis keeps up with the clock
+(in the slower cloud test it ran a few simulated hours behind at that speed; the page shows the lag).
+
+**Tested:** headless Chromium on both new pages, dark and light: a full random week at the top speed,
+pause / resume, leaving and re-opening the page mid-week, no console errors. Code checked on pandas
+3.0 (cloud) and 2.3 (your Mac).
+
+**Run:** `python app.py` -> **Live line** -> Start. Steps 4-11 are not committed to git yet.

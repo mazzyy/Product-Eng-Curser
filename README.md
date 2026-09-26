@@ -46,6 +46,7 @@ python agent.py --demo         # the copilot answers the 7 demo questions (Azure
 python agent.py --chat         # ask your own questions, with follow-ups
 
 python app.py                  # THE APP -> opens http://127.0.0.1:8000 in your browser
+python live.py --fast          # optional: stream a whole week through all models in ~3 min, print the event log
 python plot_station.py && python plot_people.py && python plot_causes.py && python plot_impacts.py   # charts/
 python plot_method.py && python plot_floor.py
 ```
@@ -65,6 +66,8 @@ theme. Pages follow the engineer's day from the role description:
 | **Maintain** | how often machines are checked | plan per failure mode (now -> recommended, next due, 7-day risk), reliability curve, suspect-window reduction |
 | **Capacity** | tell planning what the line can produce | the 7,500 answer, cars per day, capacity waterfall, losses by cause, "copy update for planning" |
 | **Shift notes** | what the supervisor says | raw notes next to what GPT-5 extracted, with links, early warnings, disputes |
+| **Live line** | see the models work on data as it arrives | a week streamed car by car: station charts with spec limits and flagged cars, KPIs, the event feed, the workflow diagram with packets, problem cases decided live |
+| **How it works** | explain the system | the workflow diagram of all models with this week's numbers; click a box for details; "trace a problem" animations; PNG export |
 
 **Around every page:**
 
@@ -75,10 +78,13 @@ theme. Pages follow the engineer's day from the role description:
 - **Replay the week** (press `R`): a player that runs the week in 60 s (0.5-4x). Incidents, floor
   warnings, WI go-lives with their check result, containment decisions and repairs pop up as they
   happened, with a cursor on the timeline.
-- **Keyboard:** `1`-`7` pages, `/` copilot, `R` replay, `space` pause, `Esc` close.
+- **Keyboard:** `1`-`9` pages, `/` copilot, `R` replay, `space` pause, `Esc` close.
 
 **5-minute demo path:**
 
+0. **How it works:** one sentence per layer, then "Trace a problem -> Nutrunner drifts". Then **Live line
+   -> Demo week -> 1 h = ½ s -> Start**: the week runs in about 1.5 min while you talk (next steps can
+   happen meanwhile; come back to see the cases decided live).
 1. **Today:** "1 critical alert, 8 high problems". Open item #1 (NR-012), then "Brief me".
 2. **Replay week at 4x:** watch the floor warn about NR-012 4 h early, the STOP toast, the WI-012 v4
    go-live flagged BLOCK.
@@ -89,6 +95,43 @@ theme. Pages follow the engineer's day from the role description:
    until crew A signs -> sign -> pilot -> release. Then submit v9: blocked (no PPE, nobody trained).
 6. **Capacity:** "Yes - 11,617 next week", then copy the planning update.
 7. **Copilot:** ask your own question.
+
+## Live line and the workflow (`live.py`, pages **Live line** and **How it works**)
+
+![Workflow](charts/workflow.png)
+
+`live.py` streams a simulated week in accelerated real time and runs every model on the data **as it
+arrives** - the models do not see the future. The week is built by the simulator (the demo story, or a
+new random week with a seed), kept in memory, and released car by car by a clock. **The demo database is
+not changed.**
+
+| When | Model | What happens live |
+|---|---|---|
+| every cycle | signal checker (1) | rules + the trained isolation forest on each new car (trailing window) -> flags, bursts, "passed OK although out of spec" |
+| every 2-hour block | cause finder (2) | runs on all data so far (after one shift to learn the normal); a cause must hold for 2 passes in a row, or be >= 85% sure; a WI that ran for weeks is not blamed unless the finder is sure |
+| a cause is confirmed | impact ranker (3) + containment (7) | priority with the next-week projection; stop / quarantine / roll back / hold + check, cars in scope, decided at that moment and re-assessed every block (escalations, fixes) |
+| every shift end | people model | findings of the shift that just ended (support gaps shown as the team lead's) |
+| a note is written | floor listener (4) | GPT-5 (live, or saved answers) or the offline rules -> facts, linked to what the cause finder knows at that moment; "the floor named it first" when a note beat the data |
+| 2 h before a WI goes live, 1 shift after | method checker (5) + change manager (6) | design + people rules -> BLOCK holds it at the gate; after one shift: measured hands-on time vs plan, sign-offs |
+| an unplanned repair | maintenance plan (8) | next check due from the Weibull plan |
+
+Speeds: 1 h = 4 s, 2 s, 1 s (a week in ~3 min) or ½ s. Pause, resume, stop, restart any time.
+
+**How well does it work live?** `python live.py --fast` runs a week without waiting and scores it
+against the planted problems:
+
+| Week | Planted problems confirmed live | Median time from the start of the problem | Other cases |
+|---|---|---|---|
+| demo (seed 7) | **10 of 11** (the supply gap is never confirmed) | 13 h | 1 (revised 6 h later) |
+| random (seed 21) | **5 of 6** | 11 h | 2 |
+| random (seed 5) | **5 of 6** | 17.5 h | 3 |
+
+Live detection is slower than the batch run on the full week: evidence such as "the symptom follows the
+person after rotation" or "stops after the repair" only exists once it has happened.
+
+To make this possible, four models got a function that works on data in memory (their outputs on the
+database are unchanged - checked row by row): `find_causes.find()`, `train_people_model.run_people()`,
+`generate_notes.build()`, `containment.prepare()`.
 
 ## The database
 
@@ -593,7 +636,9 @@ FROM st013 s JOIN incidents i USING (incident_id) WHERE s.anomaly_flag = 1;
 | `agent.py` | The copilot: Azure GPT-5 with tools, conversation, cache / offline fallback, CLI |
 | `agent_tools.py` | The 13 read-only tools the agent uses (try them: `python agent_tools.py morning_brief`) |
 | `app.py` | The app's backend: FastAPI over all models, alerts, replay events, change actions, copilot |
-| `frontend/` | The app's UI: `index.html`, `css/app.css`, `js/main.js` (shell), `js/pages/*.js` (one per page) |
+| `frontend/` | The app's UI: `index.html`, `css/app.css`, `js/main.js` (shell), `js/pages/*.js` (one per page), `js/diagram.js` (workflow diagram) |
+| `live.py` | Live line: streams a simulated week through all models in accelerated real time (`--fast` to evaluate) |
+| `charts/workflow.png` | The workflow diagram (light; `workflow-dark.png` for dark slides) |
 | `.env.example` | Azure settings template (copy to `.env`, which git ignores) |
 | `plot_station.py`, `plot_people.py`, `plot_causes.py`, `plot_impacts.py`, `plot_method.py`, `plot_floor.py` | Charts in `charts/` |
 | `data/injected_*.csv` | Answer keys from the simulator, used only for the evaluation printouts |

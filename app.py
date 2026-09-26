@@ -29,19 +29,13 @@ from pydantic import BaseModel
 
 import agent_tools as T
 import change_manager as CM
+import live
+from containment import ACTION_LABEL, ACTION_SEV
 from agent import DEMO_QUESTIONS, Agent
 from station_db import DB_PATH, ROOT, STATIONS, connect
 
 FRONTEND = ROOT / "frontend"
 app = FastAPI(title="Production Copilot")
-
-
-ACTION_LABEL = {"STOP": "Stop recommended", "QUARANTINE BATCH": "Quarantine batch", "100% CHECK": "100% check",
-                "ROLL BACK WI": "Roll back WI", "FIX WI": "Fix WI", "HOLD + CHECK": "Hold + check",
-                "MANUAL RECORD": "Manual VIN record", "SUPPORT": "Support operator", "NO HOLD": "No hold"}
-ACTION_SEV = {"STOP": "critical", "QUARANTINE BATCH": "serious", "100% CHECK": "serious", "ROLL BACK WI": "serious",
-              "FIX WI": "serious", "HOLD + CHECK": "warning", "MANUAL RECORD": "warning", "SUPPORT": "info",
-              "NO HOLD": "info"}
 
 
 def ok(obj) -> JSONResponse:
@@ -475,6 +469,68 @@ SESSIONS: dict[str, Agent] = {}
 class Ask(BaseModel):
     question: str
     session: str | None = None
+
+
+# ---------------------------------------------------------------------------------------------
+# How it works + the live line
+# ---------------------------------------------------------------------------------------------
+def count(sql: str):
+    try:
+        return int(T.q(sql).iloc[0, 0] or 0)
+    except Exception:
+        return None
+
+
+@app.get("/api/flow")
+def flow():
+    """What each model produced for the week in the database - the numbers on the workflow diagram."""
+    cyc = "(SELECT * FROM st012 UNION ALL SELECT * FROM st013)"
+    return ok({
+        "mes": count(f"SELECT COUNT(*) FROM {cyc} WHERE event_type = 'CYCLE'"),
+        "notes": count("SELECT COUNT(*) FROM floor_notes"),
+        "wi": count("SELECT COUNT(*) FROM work_instructions"),
+        "mlog": count(f"SELECT COUNT(*) FROM {cyc} WHERE event_type = 'MAINTENANCE'"),
+        "signal": count(f"SELECT COUNT(*) FROM {cyc} WHERE anomaly_flag = 1"),
+        "people": count("SELECT COUNT(*) FROM operator_shifts WHERE finding_type IS NOT NULL"),
+        "floor": count("SELECT COUNT(*) FROM floor_facts"),
+        "method": count("SELECT COUNT(*) FROM method_verdicts"),
+        "cause": count("SELECT COUNT(*) FROM incidents"),
+        "impact": count("SELECT COUNT(*) FROM impacts"),
+        "contain": count("SELECT COUNT(*) FROM car_holds"),
+        "change": count("SELECT COUNT(*) FROM changes"),
+        "maint": count("SELECT COUNT(*) FROM maint_plan"),
+        "copilot": len(T.schemas()) if hasattr(T, "schemas") else 13,
+        "app": len(build_alerts()),
+    })
+
+
+class LiveStart(BaseModel):
+    scenario: str = "demo"
+    seed: int = 7
+    speed: int = 3600
+    backend: str = "auto"
+
+
+class LiveControl(BaseModel):
+    action: str | None = None
+    speed: int | None = None
+
+
+@app.post("/api/live/start")
+def live_start(p: LiveStart):
+    live.ENGINE.start("random" if p.scenario == "random" else "demo", p.seed, p.speed,
+                      p.backend if p.backend in ("auto", "rules", "azure") else "auto")
+    return ok(live.ENGINE.state(summary=True))
+
+
+@app.post("/api/live/control")
+def live_control(p: LiveControl):
+    return ok(live.ENGINE.control(p.action, p.speed))
+
+
+@app.get("/api/live/state")
+def live_state(ev: int = 0, pt: int = 0):
+    return ok(live.ENGINE.state(ev, pt))
 
 
 @app.get("/api/copilot/presets")

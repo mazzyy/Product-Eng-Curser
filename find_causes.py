@@ -26,22 +26,21 @@ from cause_finder import (CAUSES, block_table, context, culprit_and_evidence, cy
 from station_db import CAUSES_PATH, INCIDENTS_SQL, MODELS_DIR, connect, station_tables
 
 
-def main():
-    t0 = time.time()
+def load_bundle():
     path = MODELS_DIR / "cause_finder.joblib"
     if not path.exists():
         raise SystemExit("no trained cause finder yet - run: python train_cause_model.py")
-    bundle = joblib.load(path)
-    clf, feats, min_conf = bundle["model"], bundle["features"], bundle["min_confidence"]
+    return joblib.load(path)
 
-    con = connect()
-    names = station_tables(con)
-    tables = {t: pd.read_sql(f"SELECT * FROM {t}", con) for t in names}
+
+def find(tables: dict, bundle) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Run the cause finder on station tables (the database or a live stream).
+    -> (incidents with case_id and bid_list, block table)"""
+    clf, feats, min_conf = bundle["model"], bundle["features"], bundle["min_confidence"]
     B, ctx = block_table(tables), context(tables)
     incs = incidents(B)
     if not incs:
-        print("no incidents found")
-        return
+        return pd.DataFrame(), B
 
     rows, X = [], []
     for inc in incs:
@@ -74,6 +73,19 @@ def main():
     key = inc_df.cause + "|" + inc_df.culprit + "|" + inc_df.family
     first = inc_df.groupby(key).incident_id.transform("min")
     inc_df["case_id"] = first.rank(method="dense").astype(int)
+    return inc_df, B
+
+
+def main():
+    t0 = time.time()
+    bundle = load_bundle()
+    con = connect()
+    names = station_tables(con)
+    tables = {t: pd.read_sql(f"SELECT * FROM {t}", con) for t in names}
+    inc_df, B = find(tables, bundle)
+    if inc_df.empty:
+        print("no incidents found")
+        return
 
     con.executescript(INCIDENTS_SQL)
     inc_df.drop(columns=["bid_list"]).to_sql("incidents", con, if_exists="append", index=False)

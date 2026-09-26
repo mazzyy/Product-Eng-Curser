@@ -40,6 +40,13 @@ STOP_RATE = 0.2          # >= 20 % suspect cars in the last 2 h on a safety-crit
 AUDIT_EVERY, AUDIT_MIN = 20, 5
 PRODUCT_RISK = {"quality", "pattern", "data"}     # speed problems cost time, not product quality
 
+ACTION_LABEL = {"STOP": "Stop recommended", "QUARANTINE BATCH": "Quarantine batch", "100% CHECK": "100% check",
+                "ROLL BACK WI": "Roll back WI", "FIX WI": "Fix WI", "HOLD + CHECK": "Hold + check",
+                "MANUAL RECORD": "Manual VIN record", "SUPPORT": "Support operator", "NO HOLD": "No hold"}
+ACTION_SEV = {"STOP": "critical", "QUARANTINE BATCH": "serious", "100% CHECK": "serious", "ROLL BACK WI": "serious",
+              "FIX WI": "serious", "HOLD + CHECK": "warning", "MANUAL RECORD": "warning", "SUPPORT": "info",
+              "NO HOLD": "info"}
+
 
 def margin_used(v, sid) -> float:
     """How much of the tolerance a value used, only on the sides that matter (0 = nominal, 1 = at the limit)."""
@@ -60,12 +67,22 @@ def infer_vin(prev_vin) -> str | None:
     return f"{m.group(1)}{int(m.group(2)) + 1:0{len(m.group(2))}d}" if m else None
 
 
+COLS = ["event_id", "ts", "event_type", "vin", "part_batch", "work_instruction", "operator_id", "result",
+        "primary_value", "primary_lsl", "primary_usl", "retries", "anomaly_flag", "anomaly_type", "anomaly_reason",
+        "comment"]
+
+
 def load(con):
+    cyc, ev = prepare({sid: pd.read_sql(f"SELECT {', '.join(COLS)} FROM {sid}", con) for sid in station_tables(con)})
+    inc = pd.read_sql("SELECT * FROM incidents", con, parse_dates=["start_ts", "end_ts"])
+    return cyc, ev, inc
+
+
+def prepare(frames: dict):
+    """Station tables (the database or a live stream) -> cycles with margin / spec / VIN flags, and events."""
     cyc, ev = {}, {}
-    for sid in station_tables(con):
-        d = pd.read_sql(f"SELECT event_id, ts, event_type, vin, part_batch, work_instruction, operator_id, result, "
-                        f"primary_value, primary_lsl, primary_usl, retries, anomaly_flag, anomaly_type, anomaly_reason, "
-                        f"comment FROM {sid}", con)
+    for sid, d in frames.items():
+        d = d[COLS].copy()
         d["ts"] = pd.to_datetime(d.ts)
         e = d[d.event_type == "MAINTENANCE"][["ts", "comment"]].sort_values("ts")
         d = d[d.event_type == "CYCLE"].sort_values("ts").reset_index(drop=True)
@@ -74,8 +91,7 @@ def load(con):
         d["out_of_spec"] = (d.primary_value < d.primary_lsl) | (d.primary_value > d.primary_usl)
         d["dup_vin"] = d.vin.notna() & d.vin.duplicated(keep=False)
         cyc[sid], ev[sid] = d, e
-    inc = pd.read_sql("SELECT * FROM incidents", con, parse_dates=["start_ts", "end_ts"])
-    return cyc, ev, inc
+    return cyc, ev
 
 
 def case_table(inc: pd.DataFrame) -> pd.DataFrame:
