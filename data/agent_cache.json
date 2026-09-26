@@ -1,0 +1,132 @@
+{
+ "77281a11777ea89fe7a03077": {
+  "answer": "Start with ST013 method rollback and containment for VIN genealogy, then confirm NR-012 safety and hold any suspect cars; line is above 7,500 pace.\n\nWhy:\n- WI-013 v8 fails method check (TRC-1): double VIN scans; 2,588 cars waiting for check; active case #10; alert: “roll back to v7 or fix” (method alert; cars_waiting_for_check cases [1,2,3,5,7,9,10]).\n- MES/network errors: 136 cars certainly need a check (severity 9), case #5 “VIN records missing/double.”\n- NR-012 safety-critical joint: signal used 46% of its safety margin; case #7 “repair/recalibrate; verify cars built meanwhile.” Also “ST012: 20 cars passed OK although out of spec” → 20 cars need re-check.\n- Bottleneck = ST012; maintenance risk at ST013: CF-013 monthly service overdue (window 2026-09-22 05:45) and LT-013 drift risk 16% in 7 days; 17 andon calls without team lead cost 99 cars.\n\nNext:\n- Change manager: rollback WI-013 to v7 (case #10).\n- IT + Quality: fix MES; re-scan and re-check affected cars (case #5).\n- Maintenance: recalibrate NR-012; service CF-013; check LT-013 (case #7).\n- Shift lead: ensure team-lead andon coverage.",
+  "trace": [
+   {
+    "tool": "morning_brief",
+    "args": {},
+    "result": "{\"week\": {\"week\": \"2026-09-14 06:00 to 2026-09-21 05:44\", \"target_per_week\": \"7500\", \"cars_built\": \"11241\", \"attainment\": \"150%\", \"capacity\": \"11881\", \"bottl..."
+   }
+  ],
+  "backend": "azure",
+  "response_id": "resp_00f6933534593265006ab72bde784c8193b35f2b499bfc0ca5"
+ },
+ "4419cc033381f7dc2452d0b1": {
+  "answer": "Not real — the Thursday night torque “shift” at ST012 was within normal variation.\n\nWhy:\n- Signal check ST012 2026-09-17 22:00 to 09-18 06:00: verdict “noise - within normal variation”; primary torque mean 120.098 vs week 120.159, NOK 0.6% vs 0.8%, median cycle 47.5s vs 48.0s; flagged ratio 0.355 with label/traceability/sensor flags.\n- No torque-shift incident logged for 17 Sep shift C; instead re-hits rose (incident #17, case #3, cause “people”, OP-C1) and hands-on time increased (incident #18, case #8, cause “people”, OP-C4).\n- A real torque uptick did occur earlier (17 Sep shift A: incident #15, case #7 “torque shifted +1.9σ”, cause “machine” Nutrunner NR-012), but it was not present overnight per the window check.\n\nNext:\n- Monitor NR-012 during today’s A/B shifts; maintenance decides any checks if the earlier machine shift (case #7) resurfaces.\n- Supervisor coaches C-crew on re-hits and pacing; PE to review WI-012 v6 clarity on re-hit criteria with quality.",
+  "trace": [
+   {
+    "tool": "signal_check",
+    "args": {
+     "station": "st012",
+     "start": "2026-09-17 22:00",
+     "end": "2026-09-18 06:00"
+    },
+    "result": "{\"station\": \"st012\", \"window\": [\"2026-09-17 22:00\", \"2026-09-18 06:00\"], \"window_kpis\": {\"cycles\": 531, \"median_cycle_s\": 47.5, \"retries_per_car\": 0.141, \"no..."
+   },
+   {
+    "tool": "list_incidents",
+    "args": {
+     "station": "st012",
+     "cause": null,
+     "date": "2026-09-18"
+    },
+    "result": "{\"count\": 3, \"incidents\": [{\"incident_id\": 18, \"case_id\": 8, \"shift_date\": \"2026-09-17\", \"shift\": \"C\", \"station\": \"st012\", \"symptom\": \"ST012: hands-on time 3..."
+   },
+   {
+    "tool": "list_incidents",
+    "args": {
+     "station": "st012",
+     "cause": null,
+     "date": "2026-09-17"
+    },
+    "result": "{\"count\": 5, \"incidents\": [{\"incident_id\": 13, \"case_id\": 7, \"shift_date\": \"2026-09-16\", \"shift\": \"C\", \"station\": \"st012\", \"symptom\": \"ST012: torque shifted ..."
+   },
+   {
+    "tool": "floor_notes",
+    "args": {
+     "shift_date": "2026-09-17",
+     "shift": "C",
+     "highlights_only": true
+    },
+    "result": "{\"read_by\": \"Azure gpt-5\", \"count\": 2, \"facts\": [{\"note_id\": 19, \"kind\": \"handover\", \"shift_date\": \"2026-09-17\", \"shift\": \"C\", \"station\": \"line\", \"category\":..."
+   },
+   {
+    "tool": "floor_notes",
+    "args": {
+     "shift_date": "2026-09-18",
+     "shift": "A",
+     "highlights_only": true
+    },
+    "result": "{\"read_by\": \"Azure gpt-5\", \"count\": 2, \"facts\": [{\"note_id\": 20, \"kind\": \"handover\", \"shift_date\": \"2026-09-18\", \"shift\": \"A\", \"station\": \"st013\", \"category\"..."
+   }
+  ],
+  "backend": "azure",
+  "response_id": "resp_0b1fc83984cb2c60006ab72bec54808197a11b0f27b31137db"
+ },
+ "9cfdb5e1edfd23a61a4f8415": {
+  "answer": "Yes — we should have stopped ST012 for the nutrunner issue; Quality must hold and check the cars in case #7’s window.\n\nWhy:\n- Case #7 (machine, NR-012): torque drift 1.3–1.9σ, across operators; maintenance confirmed “torque calibration drifting,” recalibrated Thu 08:30 (explain_problem case #7; notes 15–17).\n- Containment decision: STOP at 2026-09-17 04:00 back to last good check (Wed 05:45) until re-check; safety-critical joint (severity 9) (containment_advice case #7).\n- Scope: 1,696 cars from 2026-09-16 05:45 to 2026-09-17 08:30; disposition: CHECK 327, HOLD 1,357, REWORK 12; example VINs include XP7YSIM0103184, 0103194… (containment_advice case #7).\n- Impact ranked #1; “safety-critical signal used 46% of its safety margin” (impacts case #7).\n\nNext:\n- Supervisor: confirm the stop window was enforced until 08:30 recalibration, then resume.\n- Quality: hold and inspect the 1,696 cars per case #7 list; release only after checks; verify 12 reworks done.\n- Maintenance: adopt “torque calibration check every shift” for NR-012 per case #7 to prevent long windows.",
+  "trace": [
+   {
+    "tool": "morning_brief",
+    "args": {},
+    "result": "{\"week\": {\"week\": \"2026-09-14 06:00 to 2026-09-21 05:44\", \"target_per_week\": \"7500\", \"cars_built\": \"11241\", \"attainment\": \"150%\", \"capacity\": \"11881\", \"bottl..."
+   },
+   {
+    "tool": "list_incidents",
+    "args": {
+     "station": "st012",
+     "cause": null,
+     "date": null
+    },
+    "result": "{\"count\": 24, \"incidents\": [{\"incident_id\": 1, \"case_id\": 1, \"shift_date\": \"2026-09-14\", \"shift\": \"B\", \"station\": \"st012\", \"symptom\": \"ST012: angle off its n..."
+   },
+   {
+    "tool": "impacts",
+    "args": {
+     "category": "High",
+     "top": 5
+    },
+    "result": "{\"capacity_check\": {\"week\": \"2026-09-14 06:00 to 2026-09-21 05:44\", \"target_per_week\": \"7500\", \"cars_built\": \"11241\", \"attainment\": \"150%\", \"bottleneck\": \"st..."
+   },
+   {
+    "tool": "explain_problem",
+    "args": {
+     "incident_id": null,
+     "case_id": 7
+    },
+    "result": "{\"case_id\": 7, \"culprit\": \"Nutrunner NR-012\", \"cause\": \"machine\", \"first\": \"2026-09-17 02:00:00\", \"last\": \"2026-09-17 10:00:00\", \"incidents\": [{\"incident_id\"..."
+   },
+   {
+    "tool": "containment_advice",
+    "args": {
+     "case_id": 7
+    },
+    "result": "{\"case\": {\"case_id\": 7, \"culprit\": \"Nutrunner NR-012\", \"cause\": \"machine\", \"family\": \"pattern\", \"station\": \"st012\", \"severity\": 9, \"incidents\": \"13,15\", \"dec..."
+   }
+  ],
+  "backend": "azure",
+  "response_id": "resp_049789db501ff645006ab72bfcd82c8195aa2367b78fa4e30e"
+ },
+ "31f34ca5749a4897277bbdc5": {
+  "answer": "No. WI-012 v4 would be blocked; and your WI-013 v9 proposal is also blocked and needs fixes before approvals.\n\nWhy:\n- WI-012 v4 (method_check): BLOCK on TIME-1 (52.4 s = 105% of 50 s takt) and SAF-4 “manual torque 120 Nm… Re-check all 4 bolts… every car.” Also TRN-1 BLOCK (missing click-wrench training: A 1/4, B 2/4) and TRN-3 WARN (766 cycles before sign-off). Ref: WI-012 v4, st012; notes: “Added a manual check on every car.”\n- WI-013 v9 (check_proposal: proposals/WI-013_v9.json): BLOCK on SAF-6 “chemical step without PPE: Top up coolant by hand if fill volume is low,” and TRN-1 BLOCK (all crews need Coolant top-up training). Cycle is OK (44.6 s). Approvals required after fix: engineer, quality, supervisor.\n\nNext:\n- WI-012 v4: Remove every-car manual re-torque or change to controlled sampling; rebalance to ≤50 s; close TRN-1 gaps and re-sign; then resubmit to method checker before routing to approvers.\n- WI-013 v9: Add required PPE to the top-up step and attach a crew training plan; resubmit. After pass, send to engineer → quality → supervisor for approval.",
+  "trace": [
+   {
+    "tool": "method_check",
+    "args": {
+     "wi_version": "WI-012 v4"
+    },
+    "result": "{\"verdict\": [{\"wi_version\": \"WI-012 v4\", \"station\": \"st012\", \"source\": \"history\", \"valid_from\": \"2026-09-15 06:00:00\", \"change_note\": \"Added a manual check o..."
+   },
+   {
+    "tool": "check_proposal",
+    "args": {
+     "proposal_json": null,
+     "proposal_file": "proposals/WI-013_v9.json"
+    },
+    "result": "{\"wi_version\": \"WI-013 v9\", \"station\": \"st013\", \"base\": \"WI-013 v8\", \"planned_cycle_s\": 44.6, \"hands_on_s\": 18.6, \"verdict\": \"BLOCK\", \"rules_not_passed\": [{\"..."
+   }
+  ],
+  "backend": "azure",
+  "response_id": "resp_0bf1dfff0af1e16f006ab72c0713a48194a473709d482b1182"
+ }
+}
