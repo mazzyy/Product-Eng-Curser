@@ -1,0 +1,504 @@
+"""
+Production Copilot - the app. A FastAPI backend over all nine models plus the agent, and the
+frontend in frontend/ (plain HTML/CSS/JS, no build step, works offline).
+
+    pip install -r requirements.txt
+    python app.py                      # -> http://localhost:8000
+
+Everything the UI shows comes from data/factory.db (run the pipeline first, see README).
+The copilot uses Azure GPT-5 when .env has a key, otherwise its cache / offline router.
+Change-manager actions (submit, approve, sign, pilot, release) write to the database;
+everything else is read-only.
+"""
+from __future__ import annotations
+
+import json
+import math
+import sqlite3
+import uuid
+from datetime import timedelta
+from functools import lru_cache
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+
+import agent_tools as T
+import change_manager as CM
+from agent import DEMO_QUESTIONS, Agent
+from station_db import DB_PATH, ROOT, STATIONS, connect
+
+FRONTEND = ROOT / "frontend"
+app = FastAPI(title="Production Copilot")
+
+
+ACTION_LABEL = {"STOP": "Stop recommended", "QUARANTINE BATCH": "Quarantine batch", "100% CHECK": "100% check",
+                "ROLL BACK WI": "Roll back WI", "FIX WI": "Fix WI", "HOLD + CHECK": "Hold + check",
+                "MANUAL RECORD": "Manual VIN record", "SUPPORT": "Support operator", "NO HOLD": "No hold"}
+ACTION_SEV = {"STOP": "critical", "QUARANTINE BATCH": "serious", "100% CHECK": "serious", "ROLL BACK WI": "serious",
+              "FIX WI": "serious", "HOLD + CHECK": "warning", "MANUAL RECORD": "warning", "SUPPORT": "info",
+              "NO HOLD": "info"}
+
+
+def ok(obj) -> JSONResponse:
+    return JSONResponse(T.clean(obj))
+
+
+def rows(sql, params=()) -> list[dict]:
+    return T.clean(T.q(sql, params))
+
+
+@lru_cache(maxsize=1)
+def now_ts() -> pd.Timestamp:
+    return pd.Timestamp(T.q("SELECT MAX(ts) t FROM st012").t.iloc[0]).ceil("h")
+
+
+@lru_cache(maxsize=1)
+def week_start() -> pd.Timestamp:
+    return pd.Timestamp(T.q("SELECT MIN(ts) t FROM st012").t.iloc[0]).floor("D") + timedelta(hours=6)
+
+
+def prod_day(ts: pd.Series) -> pd.Series:
+    return (ts - timedelta(hours=6)).dt.floor("D")
+
+
+# ---------------------------------------------------------------------------------------------
+# Line data (static for the simulated week -> cached)
+# ---------------------------------------------------------------------------------------------
+@lru_cache(maxsize=4)
+def cycles(sid: str) -> pd.DataFrame:
+    d = T.q(f"SELECT ts, cycle_time_s, retries, result, anomaly_flag, primary_value, vin FROM {sid} "
+            f"WHERE event_type = 'CYCLE'")
+    d["ts"] = pd.to_datetime(d.ts)
+    return d
+
+
+@lru_cache(maxsize=1)
+def hourly() -> dict:
+    out = {}
+    for sid, cfg in STATIONS.items():
+        d = cycles(sid)
+        g = d.groupby(d.ts.dt.floor("h"))
+        h = pd.DataFrame({"cycles": g.size(), "ct_med": g.cycle_time_s.median(), "prim": g.primary_value.mean(),
+                          "flag_rate": g.anomaly_flag.mean(), "nok": g.result.apply(lambda r: int((r == "NOK").sum())),
+                          "retries": g.retries.mean()}).reset_index().rename(columns={"ts": "t"})
+        mu, sd = h.prim.mean(), h.prim.std() or 1
+        h["prim_z"] = (h.prim - mu) / sd
+        h["t"] = h.t.dt.strftime("%Y-%m-%d %H:%M")
+        p = cfg["primary"]
+        out[sid] = {"title": cfg["title"], "severity": cfg["severity"], "signal": p["name"], "unit": p["unit"],
+                    "hours": T.clean(h)}
+    return out
+
+
+@lru_cache(maxsize=1)
+def cars_per_day() -> list[dict]:
+    d = cycles("st013")
+    g = d.groupby(prod_day(d.ts)).size()
+    return [{"day": k.strftime("%Y-%m-%d"), "label": k.strftime("%a %d.%m"), "cars": int(v)} for k, v in g.items()]
+
+
+@lru_cache(maxsize=1)
+def cars_per_hour() -> list[dict]:
+    d = cycles("st013")
+    g = d.groupby(d.ts.dt.floor("h")).size().cumsum()
+    return [{"t": k.strftime("%Y-%m-%d %H:%M"), "cum": int(v)} for k, v in g.items()]
+
+
+# ---------------------------------------------------------------------------------------------
+# Meta, overview, alerts
+# ---------------------------------------------------------------------------------------------
+@app.get("/api/meta")
+def meta():
+    ag = Agent()
+    return ok({"now": now_ts().strftime("%Y-%m-%d %H:%M"), "week_start": week_start().strftime("%Y-%m-%d %H:%M"),
+               "stations": [{"id": s, "title": c["title"], "severity": c["severity"]} for s, c in STATIONS.items()],
+               "copilot": {"backend": ag.backend, "model": ag.cfg["model"], "cached_answers": len(ag.cache)},
+               "floor_reader": dict(T.q("SELECT key, value FROM floor_eval").values).get("backend")
+               if T.has_table("floor_eval") else None})
+
+
+@app.get("/api/overview")
+def overview():
+    brief = T.morning_brief()
+    s = dict(T.q("SELECT key, value FROM impact_summary").values)
+    imp = rows("SELECT impact_id, rank, category, round(priority,1) priority, round(score_now,1) score_now, "
+               "round(score_next,1) score_next, rule, source, title, detail, stations, cause, culprit, "
+               "CAST(case_id AS INTEGER) case_id, status, first_ts, last_ts, cars, round(risk_cars,1) risk_cars, "
+               "known_bad, definite_cars, round(margin_used,2) margin_used, round(lost_cars,1) lost_cars, "
+               "round(rework_h,1) rework_h, round(people_h,1) people_h, round(sq,1) sq, round(dl,1) dl, "
+               "round(co,1) co, round(pe,1) pe, action FROM impacts ORDER BY rank")
+    return ok({"summary": s, "cars_per_day": cars_per_day(), "queue": imp, "brief": brief,
+               "handover": T.change_status().get("handover", [])})
+
+
+def build_alerts() -> list[dict]:
+    now = now_ts()
+    out = []
+
+    def add(aid, sev, title, detail, page, target=None, ts=None):
+        out.append({"id": aid, "severity": sev, "title": title, "detail": detail, "page": page, "target": target,
+                    "ts": ts or now.strftime("%Y-%m-%d %H:%M")})
+    if T.has_table("changes"):
+        for r in T.change_status()["handover"]:
+            if r["alert"] != "-":
+                add(f"method-{r['station']}-{r['current']}", "critical", f"{r['station'].upper()} runs a method that fails the check",
+                    r["alert"], "change", r["station"])
+            if r["do_not_use"] != "-":
+                add(f"blocked-{r['do_not_use']}", "info", f"Blocked proposal: {r['do_not_use']}",
+                    "Not for use on the line - fix and resubmit", "change")
+    if T.has_table("containment_cases"):
+        c = T.q("SELECT case_id, culprit, station, action, why, window_end, \"check\" + hold + rework waiting "
+                "FROM containment_cases")
+        live = c[(pd.to_datetime(c.window_end) >= now - timedelta(hours=24)) & (c.action != "NO HOLD")]
+        for r in live.itertuples():
+            add(f"contain-{r.case_id}", ACTION_SEV.get(r.action, "info"),
+                f"{r.culprit}: {ACTION_LABEL.get(r.action, r.action)}", r.why, "contain", int(r.case_id))
+        w = c[c.waiting > 0]
+        if len(w):
+            add("holds", "serious", f"{int(w.waiting.sum()):,} cars wait for a check",
+                f"{len(w)} cases this week - quality releases them after the checks", "contain")
+    if T.has_table("maint_plan"):
+        for r in T.q("SELECT equipment, failure_mode, policy_rec, next_due, p_fail_7d FROM maint_plan").itertuples():
+            if isinstance(r.next_due, str) and r.next_due.startswith("overdue"):
+                add(f"maint-over-{r.equipment}-{r.failure_mode}", "serious", f"{r.equipment}: maintenance overdue",
+                    f"{r.policy_rec} - {r.next_due}", "maintain", r.equipment)
+            elif isinstance(r.next_due, str) and pd.Timestamp(r.next_due) <= now + timedelta(hours=24):
+                add(f"maint-due-{r.equipment}-{r.failure_mode}", "warning", f"{r.equipment}: due {r.next_due[5:]}",
+                    f"{r.policy_rec} ({r.failure_mode})", "maintain", r.equipment)
+            if r.p_fail_7d and r.p_fail_7d >= 0.1:
+                add(f"maint-risk-{r.equipment}-{r.failure_mode}", "warning",
+                    f"{r.equipment}: {r.p_fail_7d:.0%} failure risk in 7 days", r.failure_mode, "maintain", r.equipment)
+    if T.has_table("floor_facts"):
+        f = T.q("SELECT note_id, shift_date, shift, station, subject, quote FROM floor_facts "
+                "WHERE category = 'safety' AND status != 'fixed'")
+        for r in f.itertuples():
+            add(f"safety-{r.note_id}-{r.subject}", "warning", f"Safety from the floor: {r.subject}",
+                f"{r.shift_date[5:]} {r.shift}: \"{r.quote}\"", "notes", int(r.note_id))
+    if T.has_table("impacts"):
+        for r in T.q("SELECT rank, title, status, action, CAST(case_id AS INTEGER) case_id FROM impacts "
+                     "WHERE category = 'High' AND status IN ('active', 'recurring') ORDER BY rank LIMIT 4").itertuples():
+            add(f"impact-{r.rank}-{r.title}", "serious", f"High priority, {r.status}: {r.title}", r.action, "today",
+                None if pd.isna(r.case_id) else int(r.case_id))
+    order = {"critical": 0, "serious": 1, "warning": 2, "info": 3}
+    return sorted(out, key=lambda a: order[a["severity"]])
+
+
+@app.get("/api/alerts")
+def alerts():
+    return ok(build_alerts())
+
+
+# ---------------------------------------------------------------------------------------------
+# Investigate
+# ---------------------------------------------------------------------------------------------
+@app.get("/api/timeline")
+def timeline():
+    inc = rows("SELECT incident_id, case_id, family, shift_date, shift, start_ts, end_ts, stations, top_station, "
+               "symptom, cause, round(confidence,2) confidence, culprit FROM incidents ORDER BY start_ts")
+    wi = rows("SELECT w.wi_version, w.station, w.valid_from, w.change_note, v.verdict FROM work_instructions w "
+              "LEFT JOIN method_verdicts v ON v.wi_version = w.wi_version AND v.source = 'history' "
+              "WHERE w.valid_from >= ? ORDER BY w.valid_from", (week_start().strftime("%Y-%m-%d %H:%M"),))
+    reps = []
+    for sid in STATIONS:
+        for r in T.q(f"SELECT ts, comment FROM {sid} WHERE comment LIKE 'Unplanned repair:%'").itertuples():
+            reps.append({"station": sid, "ts": r.ts, "text": r.comment.replace("Unplanned repair: ", "")})
+    notes = rows("SELECT f.fact_id, f.note_id, n.written_ts ts, f.station, f.category, f.subject, f.status, f.link, "
+                 "f.lead_h, f.incident_id, f.quote FROM floor_facts f JOIN floor_notes n USING (note_id) "
+                 "WHERE f.link IN ('early warning', 'notes only', 'disputes', 'unclear') OR f.category = 'safety'") \
+        if T.has_table("floor_facts") else []
+    cont = rows("SELECT case_id, station, decision_ts, action FROM containment_cases") \
+        if T.has_table("containment_cases") else []
+    return ok({"start": week_start().strftime("%Y-%m-%d %H:%M"), "end": now_ts().strftime("%Y-%m-%d %H:%M"),
+               "stations": hourly(), "incidents": inc, "wi_changes": wi, "repairs": reps, "notes": notes,
+               "containment": cont})
+
+
+@app.get("/api/case/{case_id}")
+def case_detail(case_id: int):
+    out = T.explain_problem(case_id=case_id)
+    if "error" in out:
+        raise HTTPException(404, out["error"])
+    inc = T.q("SELECT top_station, start_ts, end_ts FROM incidents WHERE case_id = ?", (case_id,))
+    sid = inc.top_station.mode().iloc[0]
+    out["signal_check"] = T.signal_check(sid, str(inc.start_ts.min())[:16], str(inc.end_ts.max())[:16])
+    if out["cause"] == "people":
+        out["people"] = T.people_findings(out["culprit"])
+    return ok(out)
+
+
+@app.get("/api/people")
+def people():
+    return ok(T.people_findings())
+
+
+# ---------------------------------------------------------------------------------------------
+# Contain
+# ---------------------------------------------------------------------------------------------
+@app.get("/api/containment")
+def containment():
+    c = rows("SELECT * FROM containment_cases")
+    rank = {"STOP": 0, "QUARANTINE BATCH": 1, "100% CHECK": 2, "ROLL BACK WI": 3, "FIX WI": 3, "HOLD + CHECK": 4,
+            "MANUAL RECORD": 5, "SUPPORT": 6, "NO HOLD": 7}
+    for r in c:
+        r["action_label"], r["action_sev"] = ACTION_LABEL.get(r["action"], r["action"]), ACTION_SEV.get(r["action"], "info")
+    return ok(sorted(c, key=lambda r: (rank.get(r["action"], 9), -(r["check"] or 0))))
+
+
+@app.get("/api/containment/{case_id}")
+def containment_case(case_id: int):
+    c = rows("SELECT * FROM containment_cases WHERE case_id = ?", (case_id,))
+    if not c:
+        raise HTTPException(404, f"no case {case_id}")
+    cars = rows("SELECT vin, vin_inferred, station, ts, disposition, reason, where_now FROM car_holds "
+                "WHERE case_id = ? ORDER BY ts", (case_id,))
+    c[0]["action_label"], c[0]["action_sev"] = ACTION_LABEL.get(c[0]["action"]), ACTION_SEV.get(c[0]["action"], "info")
+    return ok({"case": c[0], "cars": cars})
+
+
+# ---------------------------------------------------------------------------------------------
+# Change (methods + change manager; the POSTs are the only writes)
+# ---------------------------------------------------------------------------------------------
+class Proposal(BaseModel):
+    file: str | None = None
+    spec: dict | None = None
+
+
+class Action(BaseModel):
+    role: str | None = None
+    by: str | None = None
+    accept: str | None = None
+    crew: str | None = None
+
+
+def proposal_spec(p: Proposal) -> dict:
+    if p.spec:
+        return p.spec
+    if not p.file:
+        raise HTTPException(400, "give a proposal file or spec")
+    path = (ROOT / p.file).resolve()
+    if ROOT not in path.parents or not path.exists():
+        raise HTTPException(400, f"no proposal {p.file}")
+    return json.loads(path.read_text())
+
+
+@app.get("/api/methods")
+def methods():
+    v = rows("SELECT * FROM method_verdicts ORDER BY station, wi_version")
+    c = rows("SELECT wi_version, source, grp, rule, status, message FROM method_checks")
+    steps = rows("SELECT wi_version, step_no, key, text, kind, role, time_s, every, tool, manual_torque_nm, lift_kg, "
+                 "lift_assist, hazard, ppe, critical, control_plan, qualification, min_skill FROM wi_steps "
+                 "ORDER BY wi_version, step_no")
+    ev = dict(T.q("SELECT key, value FROM method_eval").values) if T.has_table("method_eval") else {}
+    from method_checker import TAKT_S
+    return ok({"takt_s": TAKT_S, "versions": v, "checks": c, "steps": steps, "eval": ev})
+
+
+@app.get("/api/changes")
+def changes():
+    st = T.change_status()
+    ev = rows("SELECT * FROM change_events ORDER BY ts") if T.has_table("change_events") else []
+    for c in st.get("changes", []):
+        c["approvals"] = json.loads(c.get("approvals") or "{}")
+    props = []
+    for f in sorted((ROOT / "proposals").glob("*.json")):
+        props.append({"file": f"proposals/{f.name}", "spec": json.loads(f.read_text())})
+    return ok({**st, "events": ev, "proposals": props, "now": now_ts().strftime("%Y-%m-%d %H:%M")})
+
+
+@app.post("/api/changes/check")
+def change_check(p: Proposal):
+    return ok(T.check_proposal(proposal_json=json.dumps(proposal_spec(p))))
+
+
+def gate(fn):
+    con = connect()
+    try:
+        CM.init(con)
+        return ok(fn(con))
+    except CM.GateError as e:
+        return JSONResponse({"refused": str(e)}, status_code=409)
+    finally:
+        con.close()
+
+
+@app.post("/api/changes/submit")
+def change_submit(p: Proposal):
+    spec = proposal_spec(p)
+    return gate(lambda con: CM.submit(con, spec, "engineer", now_ts()))
+
+
+@app.post("/api/changes/{cid}/approve")
+def change_approve(cid: str, a: Action):
+    return gate(lambda con: CM.approve(con, cid, a.role, a.by or a.role, a.accept, now_ts() + timedelta(hours=1)))
+
+
+@app.post("/api/changes/{cid}/sign")
+def change_sign(cid: str, a: Action):
+    def run(con):
+        c = CM.get(con, cid)
+        when = pd.Timestamp(c["rollout_ts"]) - timedelta(hours=3) if c.get("rollout_ts") else now_ts()
+        return {"signed": CM.sign(con, cid, a.crew or "A", when)}
+    return gate(run)
+
+
+@app.post("/api/changes/{cid}/pilot")
+def change_pilot(cid: str, a: Action):
+    return gate(lambda con: CM.pilot(con, cid, a.crew or "A"))
+
+
+@app.post("/api/changes/{cid}/release")
+def change_release(cid: str):
+    return gate(lambda con: CM.release(con, cid))
+
+
+@app.post("/api/changes/reset")
+def change_reset():
+    """Back to the start of the demo: the week's changes replayed, the proposals not yet submitted."""
+    def run(con):
+        CM.init(con, reset=True)
+        props = [json.loads(f.read_text())["wi_version"] for f in (ROOT / "proposals").glob("*.json")]
+        s = pd.read_sql("SELECT * FROM wi_signoffs", con)
+        s[~s.wi_version.isin(props)].to_sql("wi_signoffs", con, if_exists="replace", index=False)
+        return {"replayed": len(CM.replay(con))}
+    return gate(run)
+
+
+# ---------------------------------------------------------------------------------------------
+# Maintain, capacity, notes
+# ---------------------------------------------------------------------------------------------
+@app.get("/api/maintenance")
+def maintenance():
+    plan = rows("SELECT * FROM maint_plan")
+    now = now_ts()
+    for p in plan:
+        k, lam = p["shape"], p["scale_h"]
+        tmax = max(2.2 * lam, (p.get("age_now_h") or 0) * 1.2, (p.get("interval_h") or 0) * 1.5)
+        t = np.linspace(0, tmax, 80)
+        p["curve"] = [{"t": round(float(x), 1), "r": round(float(math.exp(-(x / lam) ** k)), 4)} for x in t]
+        p["b10_h"] = round(lam * (-math.log(0.9)) ** (1 / k), 1)
+        nd = p.get("next_due")
+        p["due_in_h"] = None if not isinstance(nd, str) or nd.startswith("overdue") else \
+            round((pd.Timestamp(nd) - now).total_seconds() / 3600, 1)
+        p["overdue"] = isinstance(nd, str) and nd.startswith("overdue")
+    hist = rows("SELECT station, family, COUNT(*) runs, SUM(event = 'failure') failures FROM maint_history "
+                "GROUP BY 1, 2")
+    return ok({"now": now.strftime("%Y-%m-%d %H:%M"), "plan": plan, "history": hist})
+
+
+@app.get("/api/capacity")
+def capacity():
+    s = dict(T.q("SELECT key, value FROM impact_summary").values)
+    losses = rows("SELECT rank, category, title, cause, status, round(lost_cars,1) lost_cars FROM impacts "
+                  "WHERE lost_cars > 0.5 ORDER BY lost_cars DESC")
+    by_cause = {}
+    for r in losses:
+        by_cause[r["cause"] or "other"] = by_cause.get(r["cause"] or "other", 0) + r["lost_cars"]
+    return ok({"summary": s, "cars_per_day": cars_per_day(), "losses": losses,
+               "by_cause": [{"cause": k, "lost_cars": round(v, 1)} for k, v in sorted(by_cause.items(), key=lambda x: -x[1])],
+               "stations": {sid: {"ct_med": float(cycles(sid).cycle_time_s.median())} for sid in STATIONS}})
+
+
+@app.get("/api/notes")
+def notes():
+    n = rows("SELECT * FROM floor_notes ORDER BY written_ts")
+    f = rows("SELECT * FROM floor_facts") if T.has_table("floor_facts") else []
+    by = {}
+    for x in f:
+        by.setdefault(x["note_id"], []).append(x)
+    for x in n:
+        x["facts"] = by.get(x["note_id"], [])
+    case_of = dict(T.q("SELECT incident_id, case_id FROM incidents").values)
+    for x in n:
+        x["case_id"] = case_of.get(x.get("incident_id"))
+        for f in x["facts"]:
+            f["case_id"] = case_of.get(f.get("incident_id"))
+    ev = dict(T.q("SELECT key, value FROM floor_eval").values) if T.has_table("floor_eval") else {}
+    return ok({"notes": n, "eval": ev})
+
+
+# ---------------------------------------------------------------------------------------------
+# Replay: the week as a stream of events, for the "play the week" demo
+# ---------------------------------------------------------------------------------------------
+@app.get("/api/replay")
+def replay():
+    ev = []
+
+    def add(ts, kind, sev, station, title, detail, page, target=None):
+        ev.append({"ts": str(ts)[:16], "kind": kind, "severity": sev, "station": station, "title": title,
+                   "detail": detail, "page": page, "target": target})
+    for r in T.q("SELECT w.wi_version, w.station, w.valid_from, w.change_note, v.verdict, v.headline "
+                 "FROM work_instructions w JOIN method_verdicts v ON v.wi_version = w.wi_version AND v.source='history' "
+                 "WHERE w.valid_from >= ?", (week_start().strftime("%Y-%m-%d %H:%M"),)).itertuples():
+        add(r.valid_from, "method", "critical" if r.verdict == "BLOCK" else "info", r.station,
+            f"{r.wi_version} goes live on {r.station.upper()}",
+            f"{r.change_note}. Method check: {r.verdict}" + (f" - {r.headline.split('|')[0]}" if r.verdict != "PASS" else ""),
+            "change", r.station)
+    if T.has_table("floor_facts"):
+        for r in T.q("SELECT n.written_ts, f.station, f.category, f.subject, f.link, f.lead_h, f.quote, n.note_id "
+                     "FROM floor_facts f JOIN floor_notes n USING (note_id) WHERE n.kind != 'answer' AND "
+                     "(f.link = 'early warning' OR (f.category = 'safety' AND f.status != 'fixed'))").itertuples():
+            ew = r.link == "early warning"
+            add(r.written_ts, "note", "warning", r.station, ("Early warning from the floor" if ew else "Safety note from the floor")
+                + f": {r.subject or r.category}", f"\"{r.quote}\"", "notes", int(r.note_id))
+    first = T.q("SELECT i.case_id, i.start_ts, i.symptom, i.cause, i.confidence, i.culprit, i.top_station, "
+                "p.category FROM incidents i LEFT JOIN (SELECT case_id, MIN(category) category FROM impacts "
+                "GROUP BY case_id) p ON p.case_id = i.case_id ORDER BY i.start_ts").groupby("case_id").head(1)
+    for r in first.itertuples():
+        add(pd.Timestamp(r.start_ts) + timedelta(hours=2), "incident", "serious" if r.category == "High" else "warning",
+            r.top_station, f"Cause finder: {r.cause} - {r.culprit}", f"{r.symptom} ({r.confidence:.0%} sure)",
+            "investigate", int(r.case_id))
+    if T.has_table("containment_cases"):
+        for r in T.q("SELECT case_id, station, decision_ts, action, why, culprit FROM containment_cases "
+                     "WHERE action != 'NO HOLD'").itertuples():
+            add(r.decision_ts, "containment", ACTION_SEV.get(r.action, "info"), r.station,
+                f"Containment: {ACTION_LABEL.get(r.action, r.action)} - {r.culprit}", r.why, "contain", int(r.case_id))
+    for sid in STATIONS:
+        for r in T.q(f"SELECT ts, comment FROM {sid} WHERE comment LIKE 'Unplanned repair:%'").itertuples():
+            add(r.ts, "repair", "good", sid, f"Maintenance: {r.comment.replace('Unplanned repair: ', '')}",
+                f"{sid.upper()} back in normal condition", "maintain")
+    ev.sort(key=lambda e: e["ts"])
+    return ok({"start": week_start().strftime("%Y-%m-%d %H:%M"), "end": now_ts().strftime("%Y-%m-%d %H:%M"),
+               "production": cars_per_hour(), "target": 7500, "events": ev})
+
+
+# ---------------------------------------------------------------------------------------------
+# Copilot
+# ---------------------------------------------------------------------------------------------
+SESSIONS: dict[str, Agent] = {}
+
+
+class Ask(BaseModel):
+    question: str
+    session: str | None = None
+
+
+@app.get("/api/copilot/presets")
+def presets():
+    return ok({"questions": DEMO_QUESTIONS})
+
+
+@app.post("/api/copilot/ask")
+def ask(a: Ask):
+    sid = a.session or uuid.uuid4().hex[:12]
+    ag = SESSIONS.get(sid) or SESSIONS.setdefault(sid, Agent())
+    out = ag.ask(a.question.strip()[:2000])
+    return ok({**{k: out.get(k) for k in ("answer", "trace", "backend", "seconds")}, "session": sid})
+
+
+# ---------------------------------------------------------------------------------------------
+@app.get("/")
+def index():
+    return FileResponse(FRONTEND / "index.html")
+
+
+app.mount("/", StaticFiles(directory=FRONTEND), name="static")
+
+if __name__ == "__main__":
+    import uvicorn
+    print("Production Copilot -> http://localhost:8000")
+    uvicorn.run(app, host="127.0.0.1", port=8000, log_level="warning")

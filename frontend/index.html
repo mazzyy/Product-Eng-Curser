@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Production Copilot</title>
+  <link rel="stylesheet" href="/css/app.css">
+  <script>
+    try { const t = localStorage.getItem("pc-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
+</head>
+<body>
+  <div class="app">
+    <aside class="rail">
+      <div class="brand">
+        <div class="brand-mark" id="brandMark"></div>
+        <div><b>Production Copilot</b><span>Line ST012 – ST013</span></div>
+      </div>
+      <div class="nav-sec">The engineer's day</div>
+      <nav class="nav" id="nav"></nav>
+      <div class="rail-foot" id="railFoot"></div>
+    </aside>
+    <div class="main">
+      <header class="topbar">
+        <div>
+          <h1 id="pageTitle">Today</h1>
+          <div class="sub" id="pageSub"></div>
+        </div>
+        <div class="sp"></div>
+        <div class="clock" id="clock"></div>
+        <button class="btn" id="replayBtn" title="Replay the week (R)"></button>
+        <div class="bell-wrap">
+          <button class="btn icon" id="bellBtn" title="Alerts"></button>
+          <span class="badge" id="bellBadge" hidden>0</span>
+        </div>
+        <button class="btn icon ghost" id="themeBtn" title="Light / dark"></button>
+        <button class="btn primary" id="copilotBtn"></button>
+      </header>
+      <main class="content" id="content"><div class="page" id="page"></div></main>
+    </div>
+  </div>
+
+  <div class="scrim" id="scrim"></div>
+
+  <aside class="drawer" id="alertsDrawer" aria-label="Alerts">
+    <div class="drawer-h"><h2>Alerts</h2><span class="muted small" id="alertsSub"></span><div class="sp"></div>
+      <button class="btn sm ghost" id="ackAll">Acknowledge all</button>
+      <button class="btn icon ghost" data-close></button></div>
+    <div class="drawer-b" id="alertsList"></div>
+  </aside>
+
+  <aside class="drawer wide" id="copilot" aria-label="Copilot">
+    <div class="drawer-h"><div class="brand-mark" style="width:30px;height:30px;border-radius:9px" id="cpMark"></div>
+      <div><h2>Copilot</h2><div class="small muted" id="cpBackend"></div></div><div class="sp"></div>
+      <button class="btn sm ghost" id="cpNew" title="New conversation">New</button>
+      <button class="btn icon ghost" data-close></button></div>
+    <div class="drawer-b"><div class="cp-b" id="cpBody"></div></div>
+    <div class="cp-in"><textarea id="cpInput" placeholder="Ask about the line… (Enter to send)"></textarea>
+      <button class="btn primary icon" id="cpSend" title="Send"></button></div>
+  </aside>
+
+  <div class="transport" id="transport"></div>
+  <div class="toasts" id="toasts"></div>
+  <div id="tip"></div>
+
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>

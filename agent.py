@@ -65,7 +65,7 @@ Rules:
 
 DEMO_QUESTIONS = [
     "What should I look at first this morning?",
-    "Was the torque shift on ST012 on Thursday night real, and why did it happen?",
+    "Was the torque shift on ST012 early on Thursday 17.09 (00:00-08:30) real, and why did it happen?",
     "Should we have stopped ST012 for the nutrunner problem, and which cars have to wait for a check?",
     "Would the method checker have let WI-012 v4 through? And check my proposal proposals/WI-013_v9.json.",
     "Can we still hit 7,500 cars next week, and what costs us the most capacity?",

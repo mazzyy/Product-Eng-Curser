@@ -44,9 +44,51 @@ python containment.py          # containment      -> containment_cases, car_hold
 python change_manager.py demo  # change manager   -> changes, change_events (replay + example proposals)
 python agent.py --demo         # the copilot answers the 7 demo questions (Azure GPT-5, cached for the demo)
 python agent.py --chat         # ask your own questions, with follow-ups
+
+python app.py                  # THE APP -> http://localhost:8000
 python plot_station.py && python plot_people.py && python plot_causes.py && python plot_impacts.py   # charts/
 python plot_method.py && python plot_floor.py
 ```
+
+## The app (`app.py` + `frontend/`)
+
+A local web app for the production engineer. The backend is FastAPI over all nine models and the agent;
+the frontend is plain HTML/CSS/JS with no build step, so it works offline. Dark by default, with a light
+theme. Pages follow the engineer's day from the role description:
+
+| Page | The engineer's job | What it shows |
+|---|---|---|
+| **Today** | results, walk, meeting with the last shift | KPIs vs 7,500, the **priority queue** (impact ranker, filter / expand / focus), decisions needed, floor highlights, next shift's method |
+| **Investigate** | is a drop real, and why | week timeline (signal, incidents by cause, notes, WI changes, repairs, containment); per case: is it real, cause probabilities, evidence graph, what the floor said, impact; people findings as support |
+| **Contain** | does a product wait for a check, recommend a stop | per case: decision banner (who decides), suspect window, prevention note, disposition bar, hold list with VIN search + CSV export |
+| **Change** | a change is only done when it is approved | handover sheet, change pipeline (live gate actions: approve by role, sign-off, pilot, release; refusals shown), proposals through the method checker, every WI version with steps and rules |
+| **Maintain** | how often machines are checked | plan per failure mode (now -> recommended, next due, 7-day risk), reliability curve, suspect-window reduction |
+| **Capacity** | tell planning what the line can produce | the 7,500 answer, cars per day, capacity waterfall, losses by cause, "copy update for planning" |
+| **Shift notes** | what the supervisor says | raw notes next to what GPT-5 extracted, with links, early warnings, disputes |
+
+**Around every page:**
+
+- **Alert center:** bell with counts, grouped by severity, acknowledge. Critical alerts pop up as
+  toasts; the nav shows badges.
+- **Copilot drawer** (press `/`): the demo questions as chips; answers with clickable IDs, a "show work"
+  tool trace, and which backend answered (live / saved / offline).
+- **Replay the week** (press `R`): a player that runs the week in 60 s (0.5-4x). Incidents, floor
+  warnings, WI go-lives with their check result, containment decisions and repairs pop up as they
+  happened, with a cursor on the timeline.
+- **Keyboard:** `1`-`7` pages, `/` copilot, `R` replay, `space` pause, `Esc` close.
+
+**5-minute demo path:**
+
+1. **Today:** "1 critical alert, 8 high problems". Open item #1 (NR-012), then "Brief me".
+2. **Replay week at 4x:** watch the floor warn about NR-012 4 h early, the STOP toast, the WI-012 v4
+   go-live flagged BLOCK.
+3. **Investigate case 7:** real (35x the flag rate), machine 86%, maintenance confirmed. Then case 1:
+   the supervisor disputes it.
+4. **Contain:** STOP recommended; 327 cars to check; every-shift checks would cut the window to 8 h.
+5. **Change:** Reset demo -> submit WI-012 v7 -> approve (engineer, supervisor) -> pilot is refused
+   until crew A signs -> sign -> pilot -> release. Then submit v9: blocked (no PPE, nobody trained).
+6. **Capacity:** "Yes - 11,617 next week", then copy the planning update.
+7. **Copilot:** ask your own question.
 
 ## The database
 
@@ -550,6 +592,8 @@ FROM st013 s JOIN incidents i USING (incident_id) WHERE s.anomaly_flag = 1;
 | `maintenance.py` | Maintenance predictor: fleet history, Weibull fit, check / replacement intervals, next due |
 | `agent.py` | The copilot: Azure GPT-5 with tools, conversation, cache / offline fallback, CLI |
 | `agent_tools.py` | The 13 read-only tools the agent uses (try them: `python agent_tools.py morning_brief`) |
+| `app.py` | The app's backend: FastAPI over all models, alerts, replay events, change actions, copilot |
+| `frontend/` | The app's UI: `index.html`, `css/app.css`, `js/main.js` (shell), `js/pages/*.js` (one per page) |
 | `.env.example` | Azure settings template (copy to `.env`, which git ignores) |
 | `plot_station.py`, `plot_people.py`, `plot_causes.py`, `plot_impacts.py`, `plot_method.py`, `plot_floor.py` | Charts in `charts/` |
 | `data/injected_*.csv` | Answer keys from the simulator, used only for the evaluation printouts |

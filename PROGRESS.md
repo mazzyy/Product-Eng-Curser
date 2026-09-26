@@ -18,7 +18,7 @@ bottom every time we work on the project, so you can see what was done at each p
 | 8 | Maintenance predictor | How often to check each machine | **v1 built (step 8)**: Weibull fit on fleet history, wear / silent / random policies, next due | `maintenance.py` |
 | 9 | Agent | Uses all the others as tools | **v1 built (step 9)**: Azure GPT-5 with 13 read-only tools, cited answers, follow-ups, cache + offline fallback | `agent.py`, `agent_tools.py` |
 
-Also built: people model (`train_people_model.py`), charts (`plot_station.py`, `plot_people.py`, `plot_causes.py`, `plot_impacts.py`, `plot_method.py`, `plot_floor.py`).
+Also built: **the app** (`app.py` + `frontend/`, step 10), people model (`train_people_model.py`), charts (`plot_station.py`, `plot_people.py`, `plot_causes.py`, `plot_impacts.py`, `plot_method.py`, `plot_floor.py`).
 
 Plan for the rest: [System design for the remaining models](https://claude.ai/code/artifact/1c103c0d-14c3-49d5-ba62-1e113bc3e8df) (step 5).
 
@@ -573,3 +573,52 @@ Steps 4-8 are not committed to git yet.
 **Next:** run `python agent.py --demo` with the key (fills `data/agent_cache.json` for a safe demo),
 then the frontend: Today / Investigate / Change / Capacity + the copilot panel.
 Steps 4-9 are not committed to git yet.
+
+### Step 10 - 2026-09-26 - The app: frontend integrated with all models
+
+**What**
+
+- **`app.py`** (FastAPI):
+  - 16 read endpoints over the models: overview, alerts, timeline, case detail, people, containment,
+    methods, changes, maintenance (with reliability curves), capacity, notes, replay events, copilot
+    presets;
+  - the change-manager actions as POSTs (check, submit, approve, sign, pilot, release, reset demo);
+    gate refusals come back as HTTP 409 and show as "Gate refused";
+  - `POST /api/copilot/ask` with a session per conversation;
+  - it serves `frontend/`.
+- **`frontend/`:** plain HTML/CSS/JS modules, no build step, offline.
+  - Pages: Today, Investigate, Contain, Change, Maintain, Capacity, Shift notes.
+  - Around them: the alert center + toasts, the copilot drawer, the week-replay player, dark/light
+    themes, keyboard shortcuts.
+  - Charts are inline SVG: timeline, sparklines, columns, waterfall, reliability curve.
+  - Motion: staggered page entry, count-up KPIs, growing bars, toasts, a shaking bell, a pulsing STOP,
+    a card that shakes when a gate refuses.
+- **Prioritisation:**
+  - the Today queue is the impact ranker's order: High/Medium/Low, sub-scores, hard rules, owner,
+    focus/pin;
+  - alerts are grouped critical / serious / watch / info, and critical ones pop as toasts;
+  - nav badges count open serious alerts per page.
+
+**How - key decisions**
+
+- **Pages follow the role description** (morning results -> why -> contain -> change -> maintain ->
+  planning). The boundaries are shown in the UI: "Supervisor decides the stop", "Quality releases held
+  cars", and approvals by role.
+- **Replay the week** turns a static dataset into a live demo. The events come from the models (WI
+  go-lives with their check verdict, floor early warnings, cause finder detections, containment
+  decisions, repairs).
+- **Demo-safe:** everything is local; the copilot replays saved GPT-5 answers if the network fails.
+- **Fixed demo question 2** to "early on Thursday 17.09 (00:00-08:30)". The first live run read
+  "Thursday night" as Thu 22:00+ and wrongly called the drift noise. Run `python agent.py --demo` once
+  to save that new answer.
+
+**Tested**
+
+- Headless Chromium screenshots of every page, dark and light, with no console errors.
+- Flows: first-load toasts, the alert center, a copilot answer with its trace, replay at 4x, and the
+  full gate path in the UI (reset -> submit v7 -> approve x2 -> pilot refused -> sign -> pilot ->
+  release refused -> sign all -> release).
+- API checked on pandas 2.3 (your real database) and pandas 3.0.
+
+**Run:** `pip install -r requirements.txt && python app.py` -> http://localhost:8000
+Steps 4-10 are not committed to git yet.
