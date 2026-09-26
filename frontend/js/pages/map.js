@@ -260,9 +260,10 @@ export async function render(root, params, ctx) {
     const openN = list.filter((i) => i.open && i.kind !== "note").length;
     const n = cars.length === list.length ? cars.reduce((a, b) => a + b.n, 0) : openN || list.length;
     const hot = list.some((i) => i.open && SEV_RANK[i.sev] >= 3);
+    const txt = cars.length === list.length ? fmt.n(n) : String(n), r = Math.max(16, 7 + txt.length * 4.3);
     return `<g class="cl sev-${top.sev} ${openN ? "" : "done"}" data-cl="${key}" data-at="${at.join(",")}" data-x="${at[0]}" data-y="${at[1]}">
-      ${hot ? `<circle class="halo" r="22"/>` : ""}<circle class="cl-b" r="16"/>
-      <text class="cl-n" y="4.5">${cars.length === list.length ? fmt.n(n) : n}</text><text class="cl-l" y="30">${esc(lab)}${cars.length === list.length ? " cars" : ""}</text></g>`;
+      ${hot ? `<circle class="halo" r="${r + 6}"/>` : ""}<circle class="cl-b" r="${r}"/>
+      <text class="cl-n" y="4.5">${txt}</text><text class="cl-l" y="${r + 14}">${esc(lab)}${cars.length === list.length ? " cars" : ""}</text></g>`;
   }
   function drawPins() {
     const vis = visible();

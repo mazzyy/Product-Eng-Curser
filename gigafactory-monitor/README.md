@@ -165,9 +165,9 @@ Validation and mapping live in `src/services/alertStream.ts`
 transport, such as SSE or MQTT over WebSocket. Keep the final
 `triggerAlert(...)` call.
 
-## Connected to the Production Copilot (parent folder)
+## Connected to TAKT, the production copilot (parent folder)
 
-The copilot app (`../app.py`) streams the alerts of its **Live line** (the nine models running on a
+TAKT (`../app.py`) streams the alerts of its **Live line** (the nine models running on a
 simulated week) in this HMI's ML-feed format on `ws://127.0.0.1:<port>/ws/alerts`. All of them are for
 zone **A109 General Assembly**, where the copilot's line ST012-ST013 runs.
 
@@ -176,7 +176,7 @@ zone **A109 General Assembly**, where the copilot's line ST012-ST013 runs.
 2. Here: `cp .env.example .env.local` (put in the port `app.py` printed), then `npm install && npm run dev`.
 3. The top bar shows *ML feed · live*; each new problem zooms to A109 with its severity sound.
 
-The same site plan and zones are also built into the copilot app itself (page **Factory map**), with the
+The same site plan and zones are also built into TAKT itself (page **Factory map**), with the
 line drawn inside A109 and every problem pinned on its station or machine.
 
 ## Configuration recipes

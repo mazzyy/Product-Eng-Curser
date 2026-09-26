@@ -1,5 +1,5 @@
 """
-Production Copilot - the app. A FastAPI backend over all nine models plus the agent, and the
+TAKT (production engineer copilot) - the app. A FastAPI backend over all nine models plus the agent, and the
 frontend in frontend/ (plain HTML/CSS/JS, no build step, works offline).
 
     pip install -r requirements.txt
@@ -36,7 +36,7 @@ from agent import DEMO_QUESTIONS, Agent
 from station_db import DB_PATH, ROOT, STATIONS, connect
 
 FRONTEND = ROOT / "frontend"
-app = FastAPI(title="Production Copilot")
+app = FastAPI(title="TAKT - production copilot")
 
 
 def ok(obj) -> JSONResponse:
@@ -689,7 +689,7 @@ if __name__ == "__main__":
     import webbrowser
 
     import uvicorn
-    ap = argparse.ArgumentParser(description="Production Copilot app")
+    ap = argparse.ArgumentParser(description="TAKT - production copilot app")
     ap.add_argument("--port", type=int, default=8000)
     ap.add_argument("--no-browser", action="store_true", help="do not open the browser")
     args = ap.parse_args()
@@ -697,7 +697,7 @@ if __name__ == "__main__":
     if port is None:
         raise SystemExit(f"ports {args.port}-{args.port + 19} are all in use - try: python app.py --port 9000")
     url = f"http://127.0.0.1:{port}"
-    print(f"\n  Production Copilot is running  ->  {url}")
+    print(f"\n  TAKT - production copilot is running  ->  {url}")
     if port != args.port:
         print(f"  (port {args.port} is used by another program on this computer, so the app uses {port})")
     print("  Keep this window open while you use the app. Press Ctrl+C to stop.\n")

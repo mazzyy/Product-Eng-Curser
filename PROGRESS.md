@@ -1,4 +1,4 @@
-# Progress log - Production Engineer Copilot
+# Progress log - TAKT (production engineer copilot)
 
 This file records what was built, how, and where it stands. A new step is added at the
 bottom every time we work on the project, so you can see what was done at each point.
@@ -18,7 +18,7 @@ bottom every time we work on the project, so you can see what was done at each p
 | 8 | Maintenance predictor | How often to check each machine | **v1 built (step 8)**: Weibull fit on fleet history, wear / silent / random policies, next due | `maintenance.py` |
 | 9 | Agent | Uses all the others as tools | **v1 built (step 9)**: Azure GPT-5 with 13 read-only tools, cited answers, follow-ups, cache + offline fallback | `agent.py`, `agent_tools.py` |
 
-Also built: **the app** (`app.py` + `frontend/`, step 10), **the live line + workflow diagram** (`live.py`, step 11), **the factory map** (step 12), people model (`train_people_model.py`), charts (`plot_station.py`, `plot_people.py`, `plot_causes.py`, `plot_impacts.py`, `plot_method.py`, `plot_floor.py`).
+Also built: **the app** (`app.py` + `frontend/`, step 10), **the live line + workflow diagram** (`live.py`, step 11), **the factory map** (step 12), **the pitch deck** (`presentation/`, step 14), people model (`train_people_model.py`), charts (`plot_station.py`, `plot_people.py`, `plot_causes.py`, `plot_impacts.py`, `plot_method.py`, `plot_floor.py`).
 
 Plan for the rest: [System design for the remaining models](https://claude.ai/code/artifact/1c103c0d-14c3-49d5-ba62-1e113bc3e8df) (step 5).
 
@@ -728,3 +728,63 @@ pause / resume, leaving and re-opening the page mid-week, no console errors. Cod
 **Tested:** headless Chromium, dark and light: overview, our line, selecting cases / cars, the live line
 at top speed with Follow, the week replay, Contain -> "On the map"; the WebSocket bridge received 14
 live alerts. No console errors. `/api/map` checked on pandas 2.3 (your Mac) and 3.0.
+
+### Step 13 - 2026-09-26 - The name TAKT and a clean automotive design
+
+**What**
+
+- **Name: TAKT.** *Takt time* is the heartbeat of the line (one car every 50 s); it is a German word,
+  which fits a Giga Berlin-style plant; and it says what the tool is for: keeping the line in rhythm.
+  - It is used in the rail, the browser tab, the copilot drawer ("TAKT Copilot"), the How it works page,
+    the start message of `python app.py`, the FastAPI title, the README and this log.
+  - The mark `frontend/img/takt-mark.svg` is original: a ring (one cycle of the line) and a blue dot (the
+    car that arrives every takt).
+- **Design, inspired by automotive software:** quiet and monochrome, with colour only for meaning.
+  - **Day mode (default):** white cards on light grey, near-black text, one blue action colour.
+  - **Night mode:** pure black with dark-grey cards.
+  - Wide-spaced wordmark, uppercase micro-labels, large light numbers, flat 4 px buttons, segmented
+    controls, and no gradients or glows.
+  - Toasts, the drawers, charts, the live line, the diagram and the factory map follow the new tokens.
+  - The theme is saved as `takt-theme`, so everyone starts in day mode once.
+- Re-rendered `charts/workflow.png`, `workflow-dark.png`, `factory-map.png` and `factory-map-line.png`.
+
+**Not done on purpose:** the Tesla logo. I don't draw other companies' logos, so TAKT has its own mark.
+
+**Tested:** every page in day and night mode in headless Chromium, with no console errors.
+
+### Step 14 - 2026-09-26 - Competition pitch deck in Canva (5-6 min)
+
+**What**
+
+- A 10-slide Canva deck, **TAKT Competition Pitch**
+  ([edit](https://www.canva.com/d/gT52P8Iq-0TVF1F), [view](https://www.canva.com/d/7pvF9023aQo88Zf)),
+  focused on the logic and on visuals:
+  1. title and the name;
+  2. the problem (50 s per car, 22,000 records a week, the engineer's four questions);
+  3. what TAKT does and who decides;
+  4. the logic in five layers with the loop back to the line;
+  5. one problem end to end (NR-012 drift, from the floor note to the check interval);
+  6. where it happened (the factory map idea);
+  7. live results;
+  8. change without chaos (the five gates);
+  9. why trust it;
+  10. next steps.
+- **Timed script in the speaker notes** of every slide (e.g. `[2:00 - 3:00 | 60 s]`): 5:30 in total plus a
+  30 s buffer, 614 words (about 112 words a minute with pauses).
+- **Checked every slide after generation** and fixed: typos (IDS -> IDs, "Impact Ranger"), a duplicated
+  banner on slide 5 (now the "floor first" point), map labels that broke mid-word and now match the app
+  (machine repairs, work instructions, part batches, scan & data gaps), a generic "Stop example" (now
+  WI-013 v8 blocked), and capitals / line breaks on slides 3 and 9.
+- `presentation/README.md`: the timing table, what to cut if you run long, which screenshot from
+  `presentation/images/` to drag onto which slide, and a live-demo option for the buffer.
+
+**How - key decisions**
+
+- **Every number on the slides comes from the log above** (steps 3-11), so the pitch matches what the app
+  shows.
+- **One story carries the logic:** the NR-012 drift runs through slide 5 and is pinned on the map on slide 6,
+  so the audience follows one problem through all the models instead of ten separate features.
+- **The longest slot (60 s) goes to the end-to-end story**; the setup is kept under 1:15.
+
+**Not done:** uploading the app screenshots into Canva. The network policy blocks canva.com uploads from
+here, so they are in `presentation/images/` for a manual drag-in (about 1 minute).

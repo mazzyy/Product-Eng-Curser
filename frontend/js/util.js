@@ -60,6 +60,8 @@ const P = {
   flow: '<rect width="8" height="8" x="3" y="3" rx="2"/><path d="M7 11v4a2 2 0 0 0 2 2h4"/><rect width="8" height="8" x="13" y="13" rx="2"/>',
   scan: '<path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/>',
 };
+// TAKT mark: one cycle of the line (the ring) and the car that arrives every takt (the dot). Original artwork.
+export const MARK = `<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 5.2a10.8 10.8 0 1 1-7.64 3.16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><circle cx="16" cy="5.2" r="2.8" fill="#3e6ae1"/></svg>`;
 export const icon = (name, cls = "") => `<svg class="i ${cls}" viewBox="0 0 24 24">${P[name] || P.info}</svg>`;
 export const SEV_ICON = { critical: "critical", serious: "serious", warning: "warning", info: "info", good: "good" };
 export const CAUSE_ICON = { machine: "machine", people: "users", method: "file", station: "box" };

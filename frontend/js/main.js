@@ -1,6 +1,6 @@
 // App shell: router, navigation, alert center, toasts, copilot drawer, week replay.
 import { api } from "./api.js";
-import { $, $$, esc, fmt, icon, store, toast, initTooltip, SEV_ICON, parse, skeleton } from "./util.js";
+import { $, $$, esc, fmt, icon, store, toast, initTooltip, SEV_ICON, parse, skeleton, MARK } from "./util.js";
 
 const PAGES = {
   today:       { title: "Today", sub: "Results, priorities and what the last shifts said", icon: "today" },
@@ -157,7 +157,7 @@ function cpIntro() {
   const b = state.meta?.copilot;
   $("#cpBackend").innerHTML = b ? `${b.backend === "azure" ? "Azure " + esc(b.model) + " · live" : "offline mode"} · ${b.cached_answers} saved answers` : "";
   $("#cpBody").innerHTML = `
-    <div class="msg ai"><div class="hl">Good morning. I answer from the nine models - and show my work.</div>
+    <div class="msg ai"><div class="hl">Good morning - this is TAKT. I answer from the nine models and show my work.</div>
       <div class="t2">Ask anything about the line. Every fact comes from a tool, with the incident, case, change or rule ID.
       I never approve, stop or release anything - I tell you who does.</div></div>
     <div class="presets">${cp.presets.map((q) => `<button class="preset" data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div>`;
@@ -283,7 +283,7 @@ function updateClock() {
 }
 function setTheme(t) {
   document.documentElement.dataset.theme = t;
-  store.set("theme", t); try { localStorage.setItem("pc-theme", t); } catch (e) { /* ignore */ }
+  try { localStorage.setItem("takt-theme", t); } catch (e) { /* ignore */ }
   $("#themeBtn").innerHTML = icon(t === "light" ? "moon" : "sun");
 }
 const ctx = { api, go, ask, toast, state, cleanup: [], refreshAlerts: () => loadAlerts(false),
@@ -292,7 +292,7 @@ const ctx = { api, go, ask, toast, state, cleanup: [], refreshAlerts: () => load
 
 async function boot() {
   initTooltip();
-  $("#brandMark").innerHTML = icon("factory"); $("#cpMark").innerHTML = icon("spark");
+  $("#brandMark").innerHTML = MARK; $("#cpMark").innerHTML = MARK;
   $("#nav").innerHTML = ORDER.map((p, i) => `${PAGES[p].sec ? `<div class="nav-sec">${PAGES[p].sec}</div>` : ""}<a href="#/${p}" data-page="${p}">${icon(PAGES[p].icon)}<span>${PAGES[p].title}</span>
     <span class="badge" hidden>0</span>${p === "live" ? `<span class="live-dot" id="navLive" hidden></span>` : ""}<span class="k">${(i + 1) % 10}</span></a>`).join("");
   $("#replayBtn").innerHTML = `${icon("play")} Replay week`;
@@ -300,7 +300,7 @@ async function boot() {
   $("#copilotBtn").innerHTML = `${icon("spark")} Ask copilot <span class="kbd">/</span>`;
   $("#cpSend").innerHTML = icon("send");
   $$("[data-close]").forEach((b) => { b.innerHTML = icon("x"); b.onclick = closeDrawers; });
-  setTheme(document.documentElement.dataset.theme === "light" ? "light" : "dark");
+  setTheme(document.documentElement.dataset.theme === "dark" ? "dark" : "light");
 
   $("#themeBtn").onclick = () => setTheme(document.documentElement.dataset.theme === "light" ? "dark" : "light");
   $("#bellBtn").onclick = () => openDrawer("alertsDrawer");

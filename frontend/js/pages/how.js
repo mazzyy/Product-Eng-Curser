@@ -60,7 +60,7 @@ export async function render(root, params, ctx) {
   try { counts = await ctx.api.get("/api/flow"); } catch (e) { /* the diagram works without numbers */ }
   root.innerHTML = `
     <div class="hero"><div><h2>From a torque reading to a decision</h2>
-      <p>Nine models in five layers. Data comes in on the left, the engineer decides on the right - every box shows what it produced this week.</p></div>
+      <p>How TAKT works: nine models in five layers. Data comes in on the left, the engineer decides on the right - every box shows what it produced this week.</p></div>
       <div class="sp"></div>
       <button class="btn" id="png">${icon("download")} Download PNG</button>
       <button class="btn primary" data-go="live">${icon("pulse")} See it live</button></div>

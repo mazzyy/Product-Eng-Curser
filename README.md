@@ -1,4 +1,9 @@
-# Production Engineer Copilot - prototype
+# TAKT - the production engineer's copilot (prototype)
+
+**TAKT** is named after *takt time*, the heartbeat of an assembly line - here one car every 50 s. It is
+a German word, which fits a Giga Berlin-style plant, and it says what the tool is for: keeping the line
+in rhythm. The mark (`frontend/img/takt-mark.svg`) is one cycle of the line - the ring - and the car
+that arrives every takt - the dot.
 
 **Goal:** a "Cursor for production engineers" on a Giga-style vehicle line. Instead of a
 dashboard full of numbers, the engineer gets the few things that need a look, **why** they
@@ -53,9 +58,9 @@ python plot_method.py && python plot_floor.py
 
 ## The app (`app.py` + `frontend/`)
 
-A local web app for the production engineer. The backend is FastAPI over all nine models and the agent;
-the frontend is plain HTML/CSS/JS with no build step, so it works offline. Dark by default, with a light
-theme. Pages follow the engineer's day from the role description:
+TAKT is a local web app for the production engineer. The backend is FastAPI over all nine models and the agent;
+the frontend is plain HTML/CSS/JS with no build step, so it works offline. Clean automotive design: a white
+day mode (default) and a black night mode (moon / sun button). Pages follow the engineer's day from the role description:
 
 | Page | The engineer's job | What it shows |
 |---|---|---|
@@ -662,6 +667,7 @@ FROM st013 s JOIN incidents i USING (incident_id) WHERE s.anomaly_flag = 1;
 
 | File | Purpose |
 |---|---|
+| `frontend/img/takt-mark.svg` | The TAKT mark (also the browser tab icon) |
 | `station_db.py` | Table pattern, `operator_shifts` and `incidents` tables, station config |
 | `generate_data.py` | Line simulator: demo week or random weeks; root-cause scenarios; answer keys |
 | `train_model.py` | Signal checker |
