@@ -18,7 +18,7 @@ bottom every time we work on the project, so you can see what was done at each p
 | 8 | Maintenance predictor | How often to check each machine | **v1 built (step 8)**: Weibull fit on fleet history, wear / silent / random policies, next due | `maintenance.py` |
 | 9 | Agent | Uses all the others as tools | **v1 built (step 9)**: Azure GPT-5 with 13 read-only tools, cited answers, follow-ups, cache + offline fallback | `agent.py`, `agent_tools.py` |
 
-Also built: **the app** (`app.py` + `frontend/`, step 10), **the live line + workflow diagram** (`live.py`, step 11), people model (`train_people_model.py`), charts (`plot_station.py`, `plot_people.py`, `plot_causes.py`, `plot_impacts.py`, `plot_method.py`, `plot_floor.py`).
+Also built: **the app** (`app.py` + `frontend/`, step 10), **the live line + workflow diagram** (`live.py`, step 11), **the factory map** (step 12), people model (`train_people_model.py`), charts (`plot_station.py`, `plot_people.py`, `plot_causes.py`, `plot_impacts.py`, `plot_method.py`, `plot_floor.py`).
 
 Plan for the rest: [System design for the remaining models](https://claude.ai/code/artifact/1c103c0d-14c3-49d5-ba62-1e113bc3e8df) (step 5).
 
@@ -690,4 +690,41 @@ and one cause-finder pass takes about 0.5 s - so even at 1 h = ½ s the analysis
 pause / resume, leaving and re-opening the page mid-week, no console errors. Code checked on pandas
 3.0 (cloud) and 2.3 (your Mac).
 
-**Run:** `python app.py` -> **Live line** -> Start. Steps 4-11 are not committed to git yet.
+**Run:** `python app.py` -> **Live line** -> Start.
+
+### Step 12 - 2026-09-26 - Factory map: where on the site each problem happened
+
+**What**
+
+- **New page "Factory map"** (key `8`; Live line is `9`, How it works `0`) - the site plan from the
+  `gigafactory-monitor` prototype, rebuilt in the app's own JS (no npm):
+  - zoom and pan (wheel, drag, buttons), "Our line", "whole site", blueprint / plan colours;
+  - the zones from gigafactory-monitor, plus three buildings used here: DF IT & MES data center, ED
+    engineering & change office, WO maintenance workshop;
+  - **our line drawn inside General Assembly (A109)**: conveyor with moving cars, ST011-ST014, the six
+    machines and the operator positions - shown when zoomed in;
+  - animated flows: bolt batches / coolant from Storage & Logistics, finished cars to the yard and the
+    gate, data to MES, work instructions from engineering, technicians from the workshop.
+- **Every problem pinned where it happened** (`frontend/js/map/site.js` `locate()`): machine causes and
+  maintenance on the machine, people at the operator position, methods at the WI board, batches and
+  supply at the parts rack, MES at the VIN scanner; a dashed line back to where it came from; held cars
+  in the quarantine lane (LN). Zoomed out: one badge per station / building; zones glow by severity.
+- **Click a pin:** decision, cars to check / on hold, the path site -> hall -> station -> machine, links to
+  Investigate / Contain / copilot. Side panel: counts by place and the full list.
+- **Three sources:** this week (`GET /api/map`); the week replay (`R`) drops pins when their problem
+  started; the live line drops pins as the live models confirm them, with ripples, a ticker, Follow and
+  optional alarm tones (Web Audio).
+- "On the map" buttons on Investigate and Contain.
+- **Bridge to the original HMI:** `ws://.../ws/alerts` streams live-line alerts in the HMI's ML-feed format;
+  `gigafactory-monitor/.env.example` + a README section explain how to connect it (`pip install websockets`).
+
+**How - key decisions**
+
+- The map shows *where*, the other pages show *why* and *what to do* - every pin links there.
+- Positions are illustrative (the line is placed in A109, the added buildings are unlabelled on the
+  plan); the zones and building codes are the ones from gigafactory-monitor.
+- Constant-size pins at every zoom, clustering when zoomed out, and pins that share a spot fan out.
+
+**Tested:** headless Chromium, dark and light: overview, our line, selecting cases / cars, the live line
+at top speed with Follow, the week replay, Contain -> "On the map"; the WebSocket bridge received 14
+live alerts. No console errors. `/api/map` checked on pandas 2.3 (your Mac) and 3.0.

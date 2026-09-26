@@ -33,6 +33,7 @@ async function renderCase(el, id, ctx) {
         ${stop ? `<span class="pill">${icon("users")} Supervisor decides the stop</span>` : ""}
         ${c.check + c.hold ? `<span class="pill">${icon("good")} Quality releases held cars</span>` : ""}
         <button class="btn sm" data-ask="Should we stop for case ${c.case_id} (${esc(c.culprit)}) and which cars have to wait for a check?">${icon("spark")} Ask copilot</button>
+        <button class="btn sm ghost" data-go="map" data-case="${c.case_id}">${icon("pin")} On the map</button>
       </div>
     </div>
     ${c.action !== "NO HOLD" ? `

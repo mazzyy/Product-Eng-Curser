@@ -12,6 +12,7 @@ everything else is read-only.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import math
 import sqlite3
@@ -22,7 +23,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -504,6 +505,70 @@ def flow():
     })
 
 
+@app.get("/api/map")
+def factory_map():
+    """Everything that has a place on the site map: problem cases, other ranked problems, held cars,
+    maintenance, work-instruction verdicts and what the floor wrote - with the station / equipment it
+    belongs to. The frontend (js/map/site.js) turns stations, equipment and culprits into coordinates."""
+    cases = []
+    if T.has_table("incidents"):
+        inc = T.q("SELECT * FROM incidents ORDER BY start_ts")
+        imp = T.q("SELECT CAST(case_id AS INTEGER) case_id, category, round(priority,1) priority, status, action owner, "
+                  "rule, round(risk_cars,1) risk_cars, round(lost_cars,1) lost_cars FROM impacts WHERE case_id IS NOT NULL") \
+            if T.has_table("impacts") else pd.DataFrame()
+        con = T.q("SELECT * FROM containment_cases") if T.has_table("containment_cases") else pd.DataFrame()
+        where = T.q("SELECT case_id, where_now, disposition, COUNT(*) n FROM car_holds GROUP BY case_id, where_now, "
+                    "disposition") if T.has_table("car_holds") else pd.DataFrame()
+        for cid, g in inc.groupby("case_id"):
+            r0 = g.iloc[-1]
+            c = {"case_id": int(cid), "cause": r0.cause, "culprit": r0.culprit, "family": r0.family,
+                 "station": g.top_station.mode().iloc[0],
+                 "stations": sorted({x for v in g.stations for x in v.split(",")}), "incidents": len(g),
+                 "first_ts": g.start_ts.min(), "last_ts": g.end_ts.max(), "confidence": float(g.confidence.max()),
+                 "symptom": r0.symptom, "evidence": g.evidence.iloc[0]}
+            if len(imp):
+                m = imp[imp.case_id == cid]
+                if len(m):
+                    c.update(m.iloc[0].drop("case_id").to_dict())
+            if len(con):
+                m = con[con.case_id == cid]
+                if len(m):
+                    m = m.iloc[0]
+                    c.update({"action": m.action, "action_label": ACTION_LABEL.get(m.action, m.action),
+                              "action_sev": ACTION_SEV.get(m.action, "info"), "why": m.why, "decision_ts": m.decision_ts,
+                              "check": int(m.check), "hold": int(m.hold), "rework": int(m.rework),
+                              "window": f"{m.window_start} - {m.window_end}", "basis": m.basis})
+            if len(where):
+                w = where[where.case_id == cid]
+                c["where"] = {k: int(v) for k, v in w.groupby("where_now").n.sum().items()}
+            cases.append(c)
+    other = rows("SELECT impact_id, category, round(priority,1) priority, source, title, detail, stations, status, "
+                 "action, first_ts, last_ts FROM impacts WHERE case_id IS NULL AND category IN ('High', 'Medium') "
+                 "ORDER BY rank") if T.has_table("impacts") else []
+    maint = rows("SELECT station, equipment, family, failure_mode, policy_rec, interval_h, next_due, p_fail_7d, "
+                 "last_renewal FROM maint_plan") if T.has_table("maint_plan") else []
+    repairs = []
+    for sid in STATIONS:
+        for r in T.q(f"SELECT ts, comment, downtime_s FROM {sid} WHERE comment LIKE 'Unplanned repair:%'").itertuples():
+            repairs.append({"station": sid, "ts": r.ts, "text": r.comment.replace("Unplanned repair: ", ""),
+                            "downtime_min": round((r.downtime_s or 0) / 60)})
+    methods = rows("SELECT v.wi_version, v.station, v.verdict, v.headline, w.valid_from, w.change_note "
+                   "FROM method_verdicts v JOIN work_instructions w USING (wi_version) WHERE v.source = 'history' "
+                   "ORDER BY w.valid_from") if T.has_table("method_verdicts") else []
+    notes = rows("SELECT f.fact_id, f.note_id, n.written_ts ts, n.author, f.station, f.category, f.subject, f.status, "
+                 "f.link, f.lead_h, f.incident_id, f.quote FROM floor_facts f JOIN floor_notes n USING (note_id) "
+                 "WHERE f.station IS NOT NULL") if T.has_table("floor_facts") else []
+    line = {}
+    for sid, cfg in STATIONS.items():
+        d = cycles(sid)
+        line[sid] = {"title": cfg["title"], "severity": cfg["severity"], "cars": len(d),
+                     "flags": int(d.anomaly_flag.fillna(0).sum()), "nok": int((d.result == "NOK").sum()),
+                     "equipment": {f: {"name": e[0], "mode": e[1]} for f, e in cfg["equipment"].items()}}
+    return ok({"start": week_start().strftime("%Y-%m-%d %H:%M"), "end": now_ts().strftime("%Y-%m-%d %H:%M"),
+               "cases": cases, "other": other, "maint": maint, "repairs": repairs, "methods": methods,
+               "notes": notes, "line": line, "alerts": build_alerts()})
+
+
 class LiveStart(BaseModel):
     scenario: str = "demo"
     seed: int = 7
@@ -531,6 +596,56 @@ def live_control(p: LiveControl):
 @app.get("/api/live/state")
 def live_state(ev: int = 0, pt: int = 0):
     return ok(live.ENGINE.state(ev, pt))
+
+
+# ---------------------------------------------------------------------------------------------
+# Bridge to the gigafactory-monitor tablet HMI (its WebSocket "ML feed", see its README)
+# ---------------------------------------------------------------------------------------------
+HMI_SEV = {"critical": "critical", "serious": "high", "warning": "medium", "good": "low", "info": "low"}
+
+
+def hmi_alert(e: dict) -> dict | None:
+    """A live-line event -> the HMI's alert format (zoneId, type, severity, ...). Info events are skipped."""
+    if e["sev"] == "info":
+        return None
+    text = f"{e['title']} {e['detail']}".lower()
+    if e["node"] in ("maint",) or "nutrunner" in text or "fill head" in text or "leak tester" in text:
+        typ = "equipment_failure"
+    elif "safety" in text:
+        typ = "safety_hazard"
+    elif "supply" in text or "batch" in text:
+        typ = "material_shortage"
+    elif "vin" in text or "mes" in text or "stuck" in text or "sensor" in text:
+        typ = "sensor_failure"
+    else:
+        typ = "quality_defect"
+    st = str(e.get("station") or "")
+    eq = next((w for w in ("NR-012", "FX-012", "SC-012", "CF-013", "LT-013", "SC-013") if w.lower() in text), None)
+    return {"zoneId": "a109-general-assembly", "type": typ, "severity": HMI_SEV.get(e["sev"], "low"),
+            "equipmentId": eq or (f"Line 1 {st.upper()}" if st else "Line 1 ST012-ST013"),
+            "description": e["title"], "suggestedAction": e["detail"][:220],
+            "timestamp": e["t"].replace(" ", "T") + ":00", "confidence": 0.9}
+
+
+@app.websocket("/ws/alerts")
+async def ws_alerts(ws: WebSocket):
+    """Streams the live line's alerts to the gigafactory-monitor HMI (VITE_ALERT_WS_URL=ws://127.0.0.1:<port>/ws/alerts)."""
+    await ws.accept()
+    last = max(0, live.ENGINE.seq - 6)
+    try:
+        while True:
+            st = live.ENGINE.state(last, 10 ** 12)
+            if st.get("seq", 0) < last:            # the live week was restarted
+                last = 0
+            evs = [e for e in st.get("events", []) if e["seq"] > last]
+            if evs:
+                last = evs[-1]["seq"]
+                msgs = [m for m in map(hmi_alert, evs) if m]
+                if msgs:
+                    await ws.send_json(msgs)
+            await asyncio.sleep(0.8)
+    except (WebSocketDisconnect, RuntimeError):
+        return
 
 
 @app.get("/api/copilot/presets")

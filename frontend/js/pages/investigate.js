@@ -86,6 +86,7 @@ async function renderCase(el, id, ctx) {
       <div class="t2">${esc(i0.symptom)} - the cause finder is <b>${fmt.pct(i0.confidence)}</b> sure it is <b>${esc(c.cause)}</b>.</div>
       <div class="row" style="margin-top:12px">
         <button class="btn sm primary" data-ask="Explain case ${c.case_id} (${esc(c.culprit)}): is it real, why did it happen, what do I do next?">${icon("spark")} Ask copilot</button>
+        <button class="btn sm ghost" data-go="map" data-case="${c.case_id}">${icon("pin")} On the map</button>
         ${con ? `<button class="btn sm" data-go="contain" data-case="${c.case_id}">${icon("shield")} Containment: ${esc(con.action)}</button>` : ""}
         ${c.change_record?.length ? `<button class="btn sm" data-go="change">${icon("clipboard")} Change ${esc(c.change_record[0].change_id)}</button>` : ""}
         ${c.maintenance?.length ? `<button class="btn sm" data-go="maintain" data-eq="${esc(c.culprit.split(" ").pop())}">${icon("wrench")} Maintenance plan</button>` : ""}

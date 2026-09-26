@@ -10,7 +10,8 @@ const PAGES = {
   maintain:    { title: "Maintain", sub: "How often each machine is checked, and what is due next", icon: "wrench" },
   capacity:    { title: "Capacity", sub: "What the line can still produce - the number for planning", icon: "gauge" },
   notes:       { title: "Shift notes", sub: "What people wrote, read by the floor listener", icon: "notes" },
-  live:        { title: "Live line", sub: "A new week streamed car by car - every model runs as the data arrives", icon: "pulse", sec: "The system" },
+  map:         { title: "Factory map", sub: "Where on the site each problem happened - station, machine, source", icon: "pin", sec: "The system" },
+  live:        { title: "Live line", sub: "A new week streamed car by car - every model runs as the data arrives", icon: "pulse" },
   how:         { title: "How it works", sub: "From the station data to the engineer's decision - the workflow of all models", icon: "flow" },
 };
 const ORDER = Object.keys(PAGES);
@@ -293,7 +294,7 @@ async function boot() {
   initTooltip();
   $("#brandMark").innerHTML = icon("factory"); $("#cpMark").innerHTML = icon("spark");
   $("#nav").innerHTML = ORDER.map((p, i) => `${PAGES[p].sec ? `<div class="nav-sec">${PAGES[p].sec}</div>` : ""}<a href="#/${p}" data-page="${p}">${icon(PAGES[p].icon)}<span>${PAGES[p].title}</span>
-    <span class="badge" hidden>0</span>${p === "live" ? `<span class="live-dot" id="navLive" hidden></span>` : ""}<span class="k">${i + 1}</span></a>`).join("");
+    <span class="badge" hidden>0</span>${p === "live" ? `<span class="live-dot" id="navLive" hidden></span>` : ""}<span class="k">${(i + 1) % 10}</span></a>`).join("");
   $("#replayBtn").innerHTML = `${icon("play")} Replay week`;
   $("#bellBtn").innerHTML = icon("bell");
   $("#copilotBtn").innerHTML = `${icon("spark")} Ask copilot <span class="kbd">/</span>`;
@@ -329,7 +330,7 @@ async function boot() {
     if (e.key === "/") { e.preventDefault(); openDrawer("copilot"); setTimeout(() => $("#cpInput").focus(), 250); }
     else if (e.key === "r" || e.key === "R") { rp.on ? closeReplay() : openReplay(); }
     else if (e.key === " " && rp.on) { e.preventDefault(); play(!rp.playing); }
-    else if (/^[1-9]$/.test(e.key) && ORDER[+e.key - 1]) go(ORDER[+e.key - 1]);
+    else if (/^[0-9]$/.test(e.key) && ORDER[(+e.key + 9) % 10]) go(ORDER[(+e.key + 9) % 10]);
   });
   window.addEventListener("hashchange", route);
 

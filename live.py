@@ -939,7 +939,8 @@ class LiveEngine:
                                 "open_cases": sum(c.status == "open" for c in self.cases.values()),
                                 "check": sum(c.data.get("check", 0) for c in self.cases.values() if c.status == "open"),
                                 "hold": sum(c.data.get("hold", 0) for c in self.cases.values() if c.status == "open"),
-                                "flags_h": sum(len(q) for q in self.flag_times.values())},
+                                "flags_h": sum(len(q) for q in self.flag_times.values()),
+                                "station_flags_h": {s: len(q) for s, q in self.flag_times.items()}},
                         "nodes": {k: {"label": v[0], "unit": v[1], "n": self.count[k]} for k, v in NODES.items()}})
             if summary:
                 return out

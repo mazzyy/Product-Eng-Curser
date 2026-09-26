@@ -66,6 +66,7 @@ theme. Pages follow the engineer's day from the role description:
 | **Maintain** | how often machines are checked | plan per failure mode (now -> recommended, next due, 7-day risk), reliability curve, suspect-window reduction |
 | **Capacity** | tell planning what the line can produce | the 7,500 answer, cars per day, capacity waterfall, losses by cause, "copy update for planning" |
 | **Shift notes** | what the supervisor says | raw notes next to what GPT-5 extracted, with links, early warnings, disputes |
+| **Factory map** | where did it happen | the Giga site plan with every problem pinned where it happened - site -> hall -> our line -> station -> machine; where it came from (batch rack, engineering office, MES room, workshop) and where the held cars are; follows the live line and the week replay |
 | **Live line** | see the models work on data as it arrives | a week streamed car by car: station charts with spec limits and flagged cars, KPIs, the event feed, the workflow diagram with packets, problem cases decided live |
 | **How it works** | explain the system | the workflow diagram of all models with this week's numbers; click a box for details; "trace a problem" animations; PNG export |
 
@@ -78,23 +79,67 @@ theme. Pages follow the engineer's day from the role description:
 - **Replay the week** (press `R`): a player that runs the week in 60 s (0.5-4x). Incidents, floor
   warnings, WI go-lives with their check result, containment decisions and repairs pop up as they
   happened, with a cursor on the timeline.
-- **Keyboard:** `1`-`9` pages, `/` copilot, `R` replay, `space` pause, `Esc` close.
+- **Keyboard:** `1`-`9` and `0` pages, `/` copilot, `R` replay, `space` pause, `Esc` close.
 
 **5-minute demo path:**
 
 0. **How it works:** one sentence per layer, then "Trace a problem -> Nutrunner drifts". Then **Live line
    -> Demo week -> 1 h = ½ s -> Start**: the week runs in about 1.5 min while you talk (next steps can
    happen meanwhile; come back to see the cases decided live).
-1. **Today:** "1 critical alert, 8 high problems". Open item #1 (NR-012), then "Brief me".
-2. **Replay week at 4x:** watch the floor warn about NR-012 4 h early, the STOP toast, the WI-012 v4
+1. **Factory map** (while the live week runs, or press `R` for the week replay): the site, then "Our line";
+   pins drop where each problem happens - click the NR-012 pin: STOP, 327 cars to check, 1,393 waiting in
+   the quarantine lane.
+2. **Today:** "1 critical alert, 8 high problems". Open item #1 (NR-012), then "Brief me".
+3. **Replay week at 4x:** watch the floor warn about NR-012 4 h early, the STOP toast, the WI-012 v4
    go-live flagged BLOCK.
-3. **Investigate case 7:** real (35x the flag rate), machine 86%, maintenance confirmed. Then case 1:
+4. **Investigate case 7:** real (35x the flag rate), machine 86%, maintenance confirmed. Then case 1:
    the supervisor disputes it.
-4. **Contain:** STOP recommended; 327 cars to check; every-shift checks would cut the window to 8 h.
-5. **Change:** Reset demo -> submit WI-012 v7 -> approve (engineer, supervisor) -> pilot is refused
+5. **Contain:** STOP recommended; 327 cars to check; every-shift checks would cut the window to 8 h.
+6. **Change:** Reset demo -> submit WI-012 v7 -> approve (engineer, supervisor) -> pilot is refused
    until crew A signs -> sign -> pilot -> release. Then submit v9: blocked (no PPE, nobody trained).
-6. **Capacity:** "Yes - 11,617 next week", then copy the planning update.
-7. **Copilot:** ask your own question.
+7. **Capacity:** "Yes - 11,617 next week", then copy the planning update.
+8. **Copilot:** ask your own question.
+
+## Factory map (page **Factory map**, `frontend/js/map/`)
+
+![Factory map](charts/factory-map.png)
+
+The site plan and its zones come from the **gigafactory-monitor** prototype (`gigafactory-monitor/`). The
+map is rebuilt in the app's own JS (no npm needed) and extended for this prototype:
+
+- **Our line inside General Assembly (A109):** conveyor with moving cars, ST011 -> ST012 -> ST013 ->
+  ST014, the equipment (NR-012, FX-012, SC-012, CF-013, LT-013, SC-013) and the operator positions. It
+  appears when you zoom in; zoomed out, problems are grouped into one badge per station or building.
+- **Buildings added** (unlabelled on the plan): DF = IT & MES data center, ED = engineering & change
+  office, WO = maintenance workshop. The quality lab is MP, the quarantine lane is in LN.
+- **Flows** (animated): bolt batches and coolant from Storage & Logistics, finished cars to the yard and
+  out of the main gate, cycle data to MES, work instructions from engineering, technicians from the
+  workshop.
+
+**Where each problem is pinned**
+
+| Problem | Pin | Line to where it came from |
+|---|---|---|
+| machine cause, maintenance due, repair | the machine (e.g. NR-012 at ST012) | maintenance workshop |
+| people cause | the operator position of the station | - |
+| method cause, WI check BLOCK / WARN | the station's WI board | engineering office |
+| part batch / material supply | the station's parts rack | high-bay rack / sequencing line / coolant store |
+| MES / network | the VIN scanner | IT & MES data center |
+| cars waiting for a check | quarantine lane (LN); shipped cars at the main gate | - |
+| floor notes | next to the station, with the early warnings | - |
+
+Pin colour = cause, ring = severity, pulsing = open and serious. Click a pin for the decision, the
+cars, where they came from, and links to Investigate / Contain / the copilot. Zones glow by their worst
+open problem.
+
+**Sources:** *This week* (`GET /api/map`), and it follows the **week replay** (`R`) - pins drop when their
+problem started; or *Live line* - pins drop as the live models confirm them, with ripples where events
+happen, a ticker, **Follow** (fly to each new problem) and optional alarm tones.
+
+**The original tablet HMI works too.** `app.py` streams the live line's alerts on `ws://.../ws/alerts` in
+the format of the HMI's "ML feed" (zone A109, type, severity, equipment, action). In `gigafactory-monitor/`
+copy `.env.example` to `.env.local` (use the port `app.py` prints), then `npm install && npm run dev`.
+Needs `pip install websockets`.
 
 ## Live line and the workflow (`live.py`, pages **Live line** and **How it works**)
 
@@ -638,6 +683,9 @@ FROM st013 s JOIN incidents i USING (incident_id) WHERE s.anomaly_flag = 1;
 | `app.py` | The app's backend: FastAPI over all models, alerts, replay events, change actions, copilot |
 | `frontend/` | The app's UI: `index.html`, `css/app.css`, `js/main.js` (shell), `js/pages/*.js` (one per page), `js/diagram.js` (workflow diagram) |
 | `live.py` | Live line: streams a simulated week through all models in accelerated real time (`--fast` to evaluate) |
+| `frontend/js/map/site.js`, `frontend/js/pages/map.js`, `frontend/img/factory-map.jpg` | Factory map: zones (from gigafactory-monitor + added buildings), our line, flows, `locate()` a problem; the page |
+| `gigafactory-monitor/` | The original React tablet HMI with the site plan; can show our live alerts via `/ws/alerts` |
+| `charts/factory-map.png` | Screenshot of the factory map |
 | `charts/workflow.png` | The workflow diagram (light; `workflow-dark.png` for dark slides) |
 | `.env.example` | Azure settings template (copy to `.env`, which git ignores) |
 | `plot_station.py`, `plot_people.py`, `plot_causes.py`, `plot_impacts.py`, `plot_method.py`, `plot_floor.py` | Charts in `charts/` |
